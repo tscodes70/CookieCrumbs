@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CookieCrumbs</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 10px;
+      padding: 0;
+    }
+    h1 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      text-align: left;
+      padding: 5px;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    tbody tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    #noCookies {
+      color: #888;
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>CookieCrumbs</h1>
+  <button id="viewCookies">View Cookies</button>
+  <div id="output"></div>
+</body>
+<script src="popup.js"></script>
+</html>
