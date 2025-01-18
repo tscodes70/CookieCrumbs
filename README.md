@@ -1,1 +1,2 @@
 # CookieCrumbs
+Decentralised Cookie Manager
