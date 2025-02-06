@@ -101,17 +101,37 @@ async function initializeHelia() {
 // Call initialization when script loads
 initializeHelia();
 
-// Fetch cookies from the browser
+// // Fetch cookies from the browser
+// async function fetchCookies() {
+//   return new Promise((resolve, reject) => {
+//       chrome.cookies.getAll({}, (cookies) => {
+//           if (chrome.runtime.lastError) {
+//               return reject(chrome.runtime.lastError);
+//           }
+//           resolve(cookies);
+//       });
+//   });
+// }
+
+// Return a dummy cookie instead of fetching from the browser
 async function fetchCookies() {
-  return new Promise((resolve, reject) => {
-      chrome.cookies.getAll({}, (cookies) => {
-          if (chrome.runtime.lastError) {
-              return reject(chrome.runtime.lastError);
-          }
-          resolve(cookies);
-      });
-  });
+    return new Promise((resolve) => {
+        const dummyCookies = [
+            {
+                name: "dummyCookie",
+                value: "randomValue123",
+                domain: "example.com",
+                path: "/",
+                secure: false,
+                httpOnly: false,
+                sameSite: "Lax",
+                expirationDate: Date.now() / 1000 + 3600 // Expires in 1 hour
+            }
+        ];
+        resolve(dummyCookies);
+    });
 }
+
 
 // Store each cookie in IPFS as its own CID
 async function storeCookiesInIpfs() {
