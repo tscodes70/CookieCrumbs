@@ -4,18 +4,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CookieCrumbs</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        input {
+            padding: 5px;
+            width: 250px;
+            margin: 5px;
+        }
+        button {
+            padding: 8px 12px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #cookieOutput, #chunkOutput, #manifestOutput {
+            margin-top: 10px;
+            font-weight: bold;
+            white-space: pre-wrap;
+            text-align: left;
+            max-width: 80%;
+            margin-left: auto;
+            margin-right: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+
+    </style>
 </head>
 <body>
-    <h1>CookieCrumbs</h1>
-    
-    <button id="storeCookies">Store Cookies</button>
+    <h1>🍪 CookieCrumbs</h1>
 
-    <h3>Retrieve Cookies from IPFS</h3>
-    <input type="text" id="cidInput" placeholder="Enter CID">
-    <button id="retrieveCookies">Retrieve</button>
+    <button id="storeCookies">Generate & Store Dummy Cookie</button>
 
-    <p id="cookieOutput"></p> <!-- Display retrieved cookies -->
+    <h3>Retrieve Cookie Manifest Data</h3>
+    <input type="text" id="manifestDataInput" placeholder="Enter Manifest CID">
+    <button id="retrieveManifestData">Retrieve Manifest</button>
+    <pre id="manifestOutput"></pre> <!-- Display manifest data -->
 
+    <!-- 
+    <h3>List Chunks</h3>
+    <input type="text" id="manifestCidInput" placeholder="Enter Manifest CID">
+    <button id="listChunks">List Chunks</button>
+    <pre id="chunkOutput"></pre> 
+    -->
     <script src="popup.js"></script>
 </body>
 </html>
