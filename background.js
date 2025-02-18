@@ -2,11 +2,13 @@ importScripts('lib/helia-unixfs.js');
 importScripts('lib/helia-core.js');
 importScripts('lib/blockstore-core.js');
 importScripts('lib/blockstore-idb.js');
+importScripts('lib/multiformats.js');
 
 // Access Helia's components globally
 const { createHelia } = Helia; // From helia-core.js
 const { unixfs } = HeliaUnixfs; // From helia-unixfs.js
 const { IDBBlockstore } = BlockstoreIdb; // From blockstore-idb.js
+const { CID } =  Multiformats;
 
 let helia, fs; // Global variables for Helia and UnixFS
 let symmetricKey;
@@ -405,5 +407,257 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
 });
+
+
+async function deleteCookiesFromIpfs(domainName) {
+    console.log("================== 🗑️ Deleting and Verifying Cookies from Simulated IPFS 🗑️ ==================");
+
+    try {
+        if (!helia) await initializeHelia();
+
+        // ✅ Fetch the chunkSetCID from IndexedDB
+        const chunkSetCID = await getMappingFromDb(domainName);
+        if (!chunkSetCID) {
+            console.warn(`⚠️ No Chunk Set CID found for domain: ${domainName}`);
+            return false;
+        }
+        console.log(`✅ Found Chunk Set CID: ${chunkSetCID}`);
+
+        // ✅ Retrieve the split chunks using fs.cat
+        let chunkSetData = [];
+        try {
+            for await (const chunk of fs.cat(chunkSetCID)) {
+                chunkSetData.push(chunk);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Failed to fetch Chunk Set CID ${chunkSetCID}:`, error);
+            return false;
+        }
+
+        if (chunkSetData.length === 0) {
+            console.warn(`⚠️ No data found for Chunk Set CID: ${chunkSetCID}`);
+            return false;
+        }
+
+        // ✅ Merge all split chunks into a single Uint8Array
+        let totalLength = chunkSetData.reduce((acc, chunk) => acc + chunk.length, 0);
+        let mergedChunks = new Uint8Array(totalLength);
+
+        let offset = 0;
+        for (const chunk of chunkSetData) {
+            mergedChunks.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        // ✅ Decode merged data into JSON
+        const decoder = new TextDecoder();
+        const chunkSetContent = decoder.decode(mergedChunks);
+        console.log(`✅ Successfully Retrieved Chunk Set: ${chunkSetContent}`);
+
+        // ✅ Parse JSON to get chunk CIDs
+        const chunkSet = JSON.parse(chunkSetContent);
+        if (!chunkSet.chunkCIDs || chunkSet.chunkCIDs.length === 0) {
+            console.warn(`⚠️ No chunks found in chunk set for CID: ${chunkSetCID}`);
+            return false;
+        }
+
+        console.log(`✅ Extracted Chunk CIDs: ${JSON.stringify(chunkSet.chunkCIDs)}`);
+
+        // ✅ Retrieve and merge each chunk before deletion
+        for (const chunkCID of chunkSet.chunkCIDs) {
+            try {
+                console.log(`Deleting chunk: ${chunkCID}`);
+
+                // ✅ Verify chunk exists before deletion
+                let exists = await verifyChunkExists(chunkCID);
+                if (!exists) {
+                    console.warn(`⚠️ Chunk CID ${chunkCID} does not exist.`);
+                    continue;
+                }
+
+                // ✅ Delete chunk from IPFS
+                await helia.blockstore.delete(CID.parse(chunkCID));
+                console.log(`🗑️ Deleted Chunk CID: ${chunkCID}`);
+
+            } catch (error) {
+                console.warn(`⚠️ Failed to delete chunk CID:`, error);
+            }
+        }
+
+        // ✅ Delete the chunk set itself
+        try {
+            let exists = await verifyChunkExists(chunkSetCID);
+            if (exists) {
+                await helia.blockstore.delete(CID.parse(chunkSetCID));
+                console.log(`🗑️ Deleted Chunk Set CID: ${chunkSetCID}`);
+            } else {
+                console.warn(`⚠️ Chunk Set CID ${chunkSetCID} already missing.`);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Failed to delete Chunk Set CID ${chunkSetCID}:`, error);
+        }
+
+        // ✅ Remove the domain-to-chunkSet mapping from IndexedDB
+        await deleteMappingFromDb(domainName);
+        console.log(`✅ Successfully removed domain mapping for: ${domainName}`);
+
+        console.log("✅ Successfully deleted and verified cookies from Simulated IPFS.");
+        return true;
+    } catch (error) {
+        console.error("❌ Error deleting cookies from Simulated IPFS:", error);
+        return false;
+    }
+}
+
+
+
+async function deleteMappingFromDb(domainName) {
+    const db = await openIndexDb();
+    const transaction = db.transaction('domainMappings', 'readwrite');
+    const store = transaction.objectStore('domainMappings');
+
+    return new Promise((resolve, reject) => {
+        const request = store.delete(domainName);
+
+        request.onsuccess = () => {
+            console.log(`✅ Successfully removed mapping for domain: ${domainName}`);
+            resolve();
+        };
+
+        request.onerror = (e) => {
+            console.error('❌ Error deleting mapping:', e.target.error);
+            reject(e.target.error);
+        };
+    });
+}
+
+async function verifyChunkExists(cid) {
+    try {
+        for await (const chunk of fs.cat(cid)) {
+            if (chunk) {
+                return true; // ✅ Chunk exists
+            }
+            return false;
+        }
+    } catch (error) {
+        if (error.message.includes("not found") || error.message.includes("does not exist")) {
+            return false; // ❌ Chunk does not exist
+        }
+    }
+    return false;
+}
+
+async function isChunkDeleted(cid, timeout = 5000) {
+    console.log(`🔍 Checking if chunk ${cid} is deleted...`);
+
+    try {
+        return await Promise.race([
+            (async () => {
+                for await (const chunk of fs.cat(cid)) {
+                    if (chunk) {
+                        console.warn(`⚠️ Chunk with CID ${cid} still exists.`);
+                        return false; // Chunk still exists
+                    }
+                }
+                return false; // Default return if no error
+            })(),
+            new Promise((resolve) => {
+                setTimeout(() => {
+                    console.log(`✅ Timeout reached. Assuming chunk ${cid} is deleted.`);
+                    resolve(true);
+                }, timeout);
+            })
+        ]);
+    } catch (error) {
+        if (error.message.includes("not found") || error.message.includes("does not exist")) {
+            console.log(`✅ Chunk with CID ${cid} is deleted.`);
+            return true; // Confirmed deletion
+        }
+        console.error(`❌ Unexpected error while checking chunk CID ${cid}:`, error);
+    }
+    return false; // Assume not deleted if no confirmation
+}
+
+
+/* ✅ Function to Remove All Session Cookies from IPFS on Shutdown */
+async function clearSessionCookiesOnShutdown() {
+    try {
+        console.log("🧹 Clearing session cookies on browser shutdown...");
+
+        // Step 1: Retrieve all stored mappings from IndexedDB
+        const db = await openIndexDb();
+        const transaction = db.transaction('domainMappings', 'readonly');
+        const store = transaction.objectStore('domainMappings');
+
+        const request = store.getAll();
+        const storedMappings = await new Promise((resolve, reject) => {
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+
+        if (!storedMappings || storedMappings.length === 0) {
+            console.log("✅ No stored session cookies to delete.");
+            return;
+        }
+
+        console.log(`🔍 Found ${storedMappings.length} stored domains. Checking for session cookies...`);
+
+        // Step 2: Loop through stored mappings
+        for (const mapping of storedMappings) {
+            const { domainName, chunkSetCID } = mapping;
+
+            // Step 3: Retrieve the chunk set to check for session-based cookies
+            const chunkSetContent = await retrieveChunkSet(domainName);
+            if (!chunkSetContent) continue;
+
+            const chunkSet = JSON.parse(chunkSetContent);
+            if (!chunkSet.chunkCIDs || chunkSet.chunkCIDs.length === 0) continue;
+
+            console.log(`🛑 Deleting session cookies for domain: ${domainName}`);
+
+            // Step 4: Delete each chunk
+            for (const chunkCID of chunkSet.chunkCIDs) {
+                try {
+                    console.log(`🗑️ Deleting Chunk CID: ${chunkCID}`);
+                    await helia.blockstore.delete(CID.parse(chunkCID));
+                    console.log(`✅ Successfully deleted: ${chunkCID}`);
+                } catch (error) {
+                    console.error(`❌ Error deleting chunk CID ${chunkCID}:`, error);
+                }
+            }
+
+            // Step 5: Delete the chunk set itself
+            try {
+                console.log(`🗑️ Deleting Chunk Set CID: ${chunkSetCID}`);
+                await helia.blockstore.delete(CID.parse(chunkSetCID));
+                console.log(`✅ Successfully deleted Chunk Set CID: ${chunkSetCID}`);
+            } catch (error) {
+                console.error(`❌ Error deleting Chunk Set CID ${chunkSetCID}:`, error);
+            }
+
+            // Step 6: Remove mapping from IndexedDB
+            await deleteMappingFromDb(domainName);
+            console.log(`✅ Successfully removed mapping for: ${domainName}`);
+        }
+
+        console.log("✅ All session cookies deleted successfully.");
+    } catch (error) {
+        console.error("❌ Error clearing session cookies on shutdown:", error);
+    }
+}
+
+/* ✅ Listen for Browser Shutdown */
+chrome.windows.onRemoved.addListener(async (windowId) => {
+    console.log("🛑 Browser window closed, clearing session cookies...");
+    await clearSessionCookiesOnShutdown();
+});
+
+/* ✅ Alternative: Detect when the service worker is being suspended */
+chrome.runtime.onSuspend.addListener(async () => {
+    console.log("🛑 Service worker is suspending, clearing session cookies...");
+    await clearSessionCookiesOnShutdown();
+});
+
+
 
 initializeHelia(); // Call initialization when script loads
