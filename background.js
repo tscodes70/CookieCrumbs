@@ -9,6 +9,7 @@ const { unixfs } = HeliaUnixfs; // From helia-unixfs.js
 const { IDBBlockstore } = BlockstoreIdb; // From blockstore-idb.js
 
 let helia, fs; // Global variables for Helia and UnixFS
+let symmetricKey;
 
 // ===============================================
 // ✅ Initialize Helia with DHT and UnixFS support
@@ -16,11 +17,10 @@ let helia, fs; // Global variables for Helia and UnixFS
 async function initializeHelia() {
     try {
         if (helia) {
-            console.log("✅ Helia is already initialized.");
             return helia;
         }
 
-        console.log("🚀 Initializing Helia with DHT support...");
+        console.log("================== 🚀 Initializing Helia, FS 🚀==================");
 
         const blockstore = new IDBBlockstore("ipfs-cookie-storage");
         await blockstore.open();
@@ -55,7 +55,10 @@ async function initializeHelia() {
         // ✅ Initialize UnixFS for file storage
         fs = unixfs(helia);
 
-        console.log("✅ Helia initialized successfully.");
+        // Init Symmetric key
+        symmetricKey = await generateSymmetricKey()
+
+        console.log("✅ Successfully initialized Helia, FS and generated Symmetric Key");
         return helia;
     } catch (error) {
         console.error("❌ Error initializing Helia:", error);
@@ -130,6 +133,57 @@ async function getMappingFromDb(domainName) {
     });
 }
 
+// ===============================================
+// 🔐 Generate AES-GCM Symmetric Key for Encryption
+// ===============================================
+// AES-GCM is used for encrypting cookie data before storing it securely.
+async function generateSymmetricKey() {
+    return await crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
+}
+
+// ===============================================
+// 🔐 Encrypt Data with AES-GCM (Symmetric Encryption)
+// ===============================================
+// Encrypts data using AES-GCM and generates a unique IV (Initialization Vector).
+async function encryptWithSymmetricKey(data, key, encoder) {
+    const encodedData = encoder.encode(data);
+    const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV (12 Bytes)
+
+    // Encrypt the data
+    const cipher = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        encodedData
+    );
+
+    // Concatenate IV and ciphertext (cipher)
+    const cipherArray = new Uint8Array(iv.byteLength + cipher.byteLength);
+    cipherArray.set(iv, 0);  // Set the IV in the first part
+    cipherArray.set(new Uint8Array(cipher), iv.byteLength);  // Set the cipher after the IV
+    return cipherArray;
+}
+
+// ===============================================
+// 🔐 Decrypt Data with AES-GCM (Symmetric Decryption)
+// ===============================================
+// Decrypts data using AES-GCM by extracting the IV and ciphertext.
+async function decryptWithSymmetricKey(encryptedData, key) {
+    const iv = encryptedData.slice(0, 12); // First 12 bytes are the IV
+    const cipher = encryptedData.slice(12); // Remaining data is the ciphertext
+
+    const decryptedData = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        key,
+        cipher
+    );
+    return new TextDecoder().decode(decryptedData);
+}
+
+
 
 // ===============================================
 // ✅ Fetch cookie (currently dummy cookie)
@@ -155,31 +209,46 @@ async function fetchCookie() {
 }
 
 // ===============================================
+// Split the encrypted data into chunks
+// ===============================================
+function splitIntoChunks(cipher, chunkSize) {
+    let chunks = [];
+    for (let i = 0; i < cipher.byteLength; i += chunkSize) {
+        chunks.push(cipher.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+// ===============================================
 // 📤 Store Encrypted Cookies in IPFS
 // ===============================================
 async function storeCookiesInIpfs(domainName) {
     try {
         await initializeHelia();
 
-        const cookie = await fetchCookie();
+        console.log("==================🔒📜 Encrypting & Storing Cookies in IPFS 📜🔒 ==================");
 
+        const cookie = await fetchCookie();
         const cookieJson = JSON.stringify(cookie);
         const encoder = new TextEncoder();
-        const bytes = encoder.encode(cookieJson);
 
-        // ✅ Split Cookie Data into 64B Chunks
-        let chunkSize = 64;
+        // Encrypt the cookie data
+        const cookieIVCipher = await encryptWithSymmetricKey(cookieJson, symmetricKey, encoder);
+        console.log(`✅ Encrypted data: ${cookieIVCipher}`)
+
+        // Split Cookie Data into 64B Chunks
+        let chunkArray = splitIntoChunks(cookieIVCipher, 64)
         let chunkCIDs = [];
 
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-            let chunk = bytes.slice(i, i + chunkSize);
-            let cid = await fs.addBytes(chunk);
+        for (let i = 0; i < chunkArray.length; i ++){
+            let cipherChunk = chunkArray[i];
+            let cid = await fs.addBytes(cipherChunk);
             chunkCIDs.push(cid.toString());
         }
 
         console.log(`✅ Successfully stored cookie in ${chunkCIDs.length} chunks.`);
 
-        // ✅ Create Chunk Set
+        // Create Chunk Set
         const chunkSet = {
             totalChunks: chunkCIDs.length,
             chunkCIDs: chunkCIDs
@@ -188,9 +257,9 @@ async function storeCookiesInIpfs(domainName) {
         const chunkSetBytes = encoder.encode(JSON.stringify(chunkSet));
         const chunkSetCID = await fs.addBytes(chunkSetBytes);
 
-        console.log(`📜 Chunk Set stored with CID: ${chunkSetCID.toString()}`);
+        console.log(`✅ Chunk Set stored with CID: ${chunkSetCID.toString()}`);
 
-        // ✅ Store the domain-to-chunkSet mapping in IndexedDB
+        // Store the domain-to-chunkSet mapping in IndexedDB
         await storeMappingInDb(domainName, chunkSetCID.toString());
 
         // Return the ChunkSet CID directly for use
@@ -203,29 +272,30 @@ async function storeCookiesInIpfs(domainName) {
 
 // ✅ Retrieve ChunkSet File using only the domainName
 async function retrieveChunkSet(domainName) {
+    console.log("================== 📥 Retrieving Cookie Chunk Set CID 📥 ==================");
     try {
         // Fetch the chunkSetCID for the given domainName from IndexedDB
         const chunkSetCID = await getMappingFromDb(domainName);
 
         if (!chunkSetCID) {
-            throw new Error(`No Chunk Set CID found for domain: ${domainName}`);
+            throw new Error(`❌ No Chunk Set CID found for domain: ${domainName}`);
         }
 
         // Initialize Helia and fs
         await initializeHelia();
 
-        console.log(`📥 Fetching Chunk Set CID: ${chunkSetCID}...`);
+        console.log(`✅ Successfully fetched Chunk Set CID: ${chunkSetCID}`);
         let chunks = [];
 
         // Fetch all chunks for the Chunk Set
         for await (const chunk of fs.cat(chunkSetCID)) {
             chunks.push(chunk);
-            console.log(`📥 Retrieved Chunk: Size ${chunk.length} bytes`);
+            console.log(`✅ Successfully retrieved Chunk: Size ${chunk.length} bytes`);
         }
 
         // If no chunks are retrieved, throw an error
         if (chunks.length === 0) {
-            throw new Error(`Chunk Set CID ${chunkSetCID} not found or empty.`);
+            throw new Error(`❌ Chunk Set CID ${chunkSetCID} not found or empty.`);
         }
 
         // Combine all chunks into a single Uint8Array
@@ -241,78 +311,41 @@ async function retrieveChunkSet(domainName) {
         const decoder = new TextDecoder();
         const chunkSetContent = decoder.decode(mergedChunks);
 
-        console.log(`📂 Retrieved Chunk Set Data: ${chunkSetContent}`);
+        console.log(`✅ Successfully Retrieved Chunk Set: ${chunkSetContent}`);
 
-        // Try to parse the JSON content
-        let parsedData;
-        try {
-            parsedData = JSON.parse(chunkSetContent);
-        } catch (jsonError) {
-            console.error("❌ Error parsing JSON data:", jsonError);
-            return null;
-        }
-
-        // Retrieve cookie chunks from chunkSetCID
-        console.log(`🔄 Retrieving cookie data using ChunkSet CID: ${chunkSetCID}...`);
-
-        // Retrieve the chunks of cookie data
-        let cookieChunks = [];
-        for await (const chunk of fs.cat(chunkSetCID)) {
-            cookieChunks.push(chunk);
-            console.log(`📥 Retrieved Cookie Chunk: Size ${chunk.length} bytes`);
-        }
-
-        if (cookieChunks.length === 0) {
-            throw new Error(`No cookie data found for domain: ${domainName}`);
-        }
-
-        // Merge all cookie chunks
-        const mergedCookieChunks = new Uint8Array(cookieChunks.reduce((acc, chunk) => acc + chunk.length, 0));
-        let cookieOffset = 0;
-        for (const chunk of cookieChunks) {
-            mergedCookieChunks.set(chunk, cookieOffset);
-            cookieOffset += chunk.length;
-        }
-
-        // Decode the combined cookie data into a string
-        const cookieData = decoder.decode(mergedCookieChunks);
-        console.log(`🍪 Retrieved Cookie Data: ${cookieData}`);
-
-        return cookieData; // Return the cookie data
+        return chunkSetContent; // Return the cookie data
             
     } catch (error) {
-        console.error("❌ Error retrieving manifest or cookie data:", error);
+        console.error("❌ Error retrieving chunk set:", error);
         return null;
     }
 }
 
 /* ✅ Retrieve Cookies from IPFS using the CIDs */
 async function retrieveCookiesFromIpfs(cookieData) {
+    console.log("================== 🔑📦 Decrypting, Retrieving and Reconstructing Cookie Data 📦🔑 ==================");
     try {
         // Ensure Helia and fs are initialized
         if (!helia) await initializeHelia();
 
         // Check if CIDs are provided
         if (cookieData.totalChunks === 0) {
-            console.warn("⚠️ No chunks found in manifest.");
+            console.warn("⚠️ No chunks found in chunk set.");
             return null;
         }
 
         let combinedBytes = [];
         let cids = cookieData.chunkCIDs
-        console.log(cids)
 
         // Fetch each chunk for the given CIDs
         for (const cid of cids) {
-            console.log(`📡 Processing CID: ${cid}`); // Log the CID being processed
+            console.log(`✅ Processing CID: ${cid}`); // Log the CID being processed
 
             const chunks = [];
 
             // Fetch the chunk data
             for await (const chunk of fs.cat(cid)) {
                 chunks.push(chunk);
-                console.log(`📥 Retrieved Chunk: ${cid}, Size: ${chunk.length} bytes`); // Log chunk size
-                console.log(`Chunk Preview:`, new TextDecoder().decode(chunk).slice(0, 100)); // Log preview of first 100 characters of chunk
             }
 
             // Merge the fetched chunks into the combinedBytes array
@@ -327,17 +360,16 @@ async function retrieveCookiesFromIpfs(cookieData) {
         }
 
         // Merge Chunks into a Single Uint8Array without using flat() method
-        const finalBytes = new Uint8Array(combinedBytes);
+        const mergedEncryptedBytes = new Uint8Array(combinedBytes);
 
-        // Decode the final bytes into a string (assuming the data is text-based, such as JSON)
-        const decoder = new TextDecoder();
-        const fileContent = decoder.decode(finalBytes);
+        // Decrypt the data
+        const mergedDecryptedBytes = await decryptWithSymmetricKey(mergedEncryptedBytes, symmetricKey);
 
-        console.log(`📂 Reconstructed Data:`, fileContent);
+        console.log(`✅ Successfully Reconstructed Cookie Data:`, mergedDecryptedBytes);
 
         // Try to parse the JSON content
         try {
-            const parsedData = JSON.parse(fileContent);
+            const parsedData = JSON.parse(mergedDecryptedBytes);
             return parsedData;
         } catch (jsonError) {
             console.error("❌ Error parsing JSON data:", jsonError);
@@ -353,8 +385,9 @@ async function retrieveCookiesFromIpfs(cookieData) {
 /* ✅ Handle Messages from Popup */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "storeCookies") {
-        storeCookiesInIpfs("example.com")
-            .then((chunkSetCID) => sendResponse({ chunkSetCID }))
+        let domainName = "example.com"
+        storeCookiesInIpfs(domainName)
+            .then((chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
             .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
         return true; // Keep async response open
     }
