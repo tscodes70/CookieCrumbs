@@ -68,8 +68,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
 
-
-
     // ✅ List Chunks (Retrieve Chunks)
     document.getElementById("listChunks").addEventListener("click", () => {
         const manifestCid = document.getElementById("manifestCidInput").value.trim();
