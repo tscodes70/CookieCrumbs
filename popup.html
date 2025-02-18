@@ -20,7 +20,7 @@
             margin: 5px;
             cursor: pointer;
         }
-        #cookieOutput, #chunkOutput, #manifestOutput {
+        #cookieDataOutput {
             margin-top: 10px;
             font-weight: bold;
             white-space: pre-wrap;
@@ -43,10 +43,10 @@
 
     <button id="storeCookies">Generate & Store Dummy Cookie</button>
 
-    <h3>Retrieve Cookie Manifest Data</h3>
-    <input type="text" id="manifestDataInput" placeholder="Enter Manifest CID">
-    <button id="retrieveManifestData">Retrieve Manifest</button>
-    <pre id="manifestOutput"></pre> <!-- Display manifest data -->
+    <h3>Retrieve Cookie Data</h3>
+    <input type="text" id="domainNameDataInput" placeholder="Enter Domain Name">
+    <button id="retrieveCookies">Retrieve Cookies</button>
+    <pre id="cookieDataOutput"></pre> <!-- Display manifest data -->
 
     <!-- 
     <h3>List Chunks</h3>

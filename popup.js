@@ -17,15 +17,15 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     // ✅ Retrieve Manifest Data
-    document.getElementById("retrieveManifestData").addEventListener("click", () => {
-        const manifestCid = document.getElementById("manifestDataInput").value.trim();
-        if (!manifestCid) {
-            alert("⚠️ Please enter a valid Manifest CID.");
+    document.getElementById("retrieveCookies").addEventListener("click", () => {
+        const domainName = document.getElementById("domainNameDataInput").value.trim();
+        if (!domainName) {
+            alert("⚠️ Please enter a valid Domain Name.");
             return;
         }
 
-        chrome.runtime.sendMessage({ action: "retrieveManifest", manifestCid: manifestCid }, (response) => {
-            const output = document.getElementById("manifestOutput");
+        chrome.runtime.sendMessage({ action: "retrieveCookies", domainName: domainName }, (response) => {
+            const output = document.getElementById("cookieDataOutput");
 
             if (response.error) {
                 output.innerText = `❌ Error: ${response.error}`;
@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             if (!response) {
-                output.innerText = `⚠️ No manifest data found for CID: ${manifestCid}`;
+                output.innerText = `⚠️ No data found for domain name: ${domainName}`;
                 return;
             }
 

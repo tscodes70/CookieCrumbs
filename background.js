@@ -10,7 +10,9 @@ const { IDBBlockstore } = BlockstoreIdb; // From blockstore-idb.js
 
 let helia, fs; // Global variables for Helia and UnixFS
 
-/* ✅ Initialize Helia with DHT and UnixFS support */
+// ===============================================
+// ✅ Initialize Helia with DHT and UnixFS support
+// ===============================================
 async function initializeHelia() {
     try {
         if (helia) {
@@ -60,36 +62,112 @@ async function initializeHelia() {
         throw error;
     }
 }
-initializeHelia(); // Call initialization when script loads
 
-
-/* ✅ Store Dummy Cookie in IPFS */
-async function storeCookiesInIpfs() {
-    try {
-        await initializeHelia();
-
-        const dummyCookie = {
-            name: "dummyCookie",
-            value: "randomValue123",
-            domain: "example.com",
-            path: "/",
-            secure: false,
-            httpOnly: false,
-            sameSite: "Lax",
-            expirationDate: Date.now() / 1000 + 3600,
-            metadata: {
-                deviceType: "Desktop",
-                browser: "Chrome",
-                version: "119.0.0.0",
-                os: "Windows 10"
+// Open an IndexedDB connection (or create if it doesn't exist)
+async function openIndexDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('CookieStorageDB', 1);
+        
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('domainMappings')) {
+                db.createObjectStore('domainMappings', { keyPath: 'domainName' });
             }
         };
 
-        const cookieJson = JSON.stringify(dummyCookie);
+        request.onsuccess = (e) => {
+            resolve(e.target.result);
+        };
+
+        request.onerror = (e) => {
+            reject(e.target.error);
+        };
+    });
+}
+
+// Store the domain-to-chunkSet mapping in IndexedDB
+async function storeMappingInDb(domainName, chunkSetCID) {
+    const db = await openIndexDb();
+    const transaction = db.transaction('domainMappings', 'readwrite');
+    const store = transaction.objectStore('domainMappings');
+    const mapping = { domainName, chunkSetCID };
+
+    const request = store.put(mapping); // Store the mapping
+
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => {
+            console.log(`✅ Successfully stored mapping for domain: ${domainName}`);
+            resolve();
+        };
+        request.onerror = (e) => {
+            console.error('❌ Error storing mapping:', e.target.error);
+            reject(e.target.error);
+        };
+    });
+}
+
+// Function to retrieve the chunkSetCID from IndexedDB for a domain
+async function getMappingFromDb(domainName) {
+    const db = await openIndexDb();
+    const transaction = db.transaction('domainMappings', 'readonly');
+    const store = transaction.objectStore('domainMappings');
+
+    const request = store.get(domainName);  // Fetch the mapping by domain name
+    return new Promise((resolve, reject) => {
+        request.onsuccess = (e) => {
+            const mapping = e.target.result;
+            if (mapping) {
+                resolve(mapping.chunkSetCID);  // Return the chunkSetCID from the mapping
+            } else {
+                console.error(`❌ No mapping found for domain: ${domainName}`);
+                resolve(null);  // No mapping found, resolve with null
+            }
+        };
+        request.onerror = (e) => {
+            console.error('❌ Error retrieving mapping from DB:', e.target.error);
+            reject(e.target.error);
+        };
+    });
+}
+
+
+// ===============================================
+// ✅ Fetch cookie (currently dummy cookie)
+// ===============================================
+async function fetchCookie() {
+    // Return Dummy Cookie
+    return {
+        name: "dummyCookie",
+        value: "randomValue123",
+        domain: "example.com",
+        path: "/",
+        secure: false,
+        httpOnly: false,
+        sameSite: "Lax",
+        expirationDate: Date.now() / 1000 + 3600,
+        metadata: {
+            deviceType: "Desktop",
+            browser: "Chrome",
+            version: "119.0.0.0",
+            os: "Windows 10"
+        }
+    };
+}
+
+// ===============================================
+// 📤 Store Encrypted Cookies in IPFS
+// ===============================================
+async function storeCookiesInIpfs(domainName) {
+    try {
+        await initializeHelia();
+
+        const cookie = await fetchCookie();
+
+        const cookieJson = JSON.stringify(cookie);
         const encoder = new TextEncoder();
         const bytes = encoder.encode(cookieJson);
 
-        // ✅ Split Data into 64B Chunks
+        // ✅ Split Cookie Data into 64B Chunks
         let chunkSize = 64;
         let chunkCIDs = [];
 
@@ -99,44 +177,55 @@ async function storeCookiesInIpfs() {
             chunkCIDs.push(cid.toString());
         }
 
-        console.log(`✅ Stored ${chunkCIDs.length} chunks.`);
+        console.log(`✅ Successfully stored cookie in ${chunkCIDs.length} chunks.`);
 
-        // ✅ Create Manifest
-        const manifest = {
-            fileName: "cookies.json",
+        // ✅ Create Chunk Set
+        const chunkSet = {
             totalChunks: chunkCIDs.length,
-            chunkCIDs
+            chunkCIDs: chunkCIDs
         };
 
-        const manifestBytes = encoder.encode(JSON.stringify(manifest));
-        const manifestCID = await fs.addBytes(manifestBytes);
+        const chunkSetBytes = encoder.encode(JSON.stringify(chunkSet));
+        const chunkSetCID = await fs.addBytes(chunkSetBytes);
 
-        console.log(`📜 Manifest stored with CID: ${manifestCID.toString()}`);
-        return manifestCID.toString();
+        console.log(`📜 Chunk Set stored with CID: ${chunkSetCID.toString()}`);
+
+        // ✅ Store the domain-to-chunkSet mapping in IndexedDB
+        await storeMappingInDb(domainName, chunkSetCID.toString());
+
+        // Return the ChunkSet CID directly for use
+        return chunkSetCID.toString();
+
     } catch (error) {
         console.error('❌ Error storing cookies in IPFS:', error);
     }
 }
 
-
-/* ✅ Retrieve Manifest File */
-async function retrieveManifest(manifestCID) {
+// ✅ Retrieve ChunkSet File using only the domainName
+async function retrieveChunkSet(domainName) {
     try {
+        // Fetch the chunkSetCID for the given domainName from IndexedDB
+        const chunkSetCID = await getMappingFromDb(domainName);
+
+        if (!chunkSetCID) {
+            throw new Error(`No Chunk Set CID found for domain: ${domainName}`);
+        }
+
         // Initialize Helia and fs
         await initializeHelia();
 
-        console.log(`📥 Fetching Manifest CID: ${manifestCID}...`);
+        console.log(`📥 Fetching Chunk Set CID: ${chunkSetCID}...`);
         let chunks = [];
 
-        // Fetch all chunks for the manifest
-        for await (const chunk of fs.cat(manifestCID)) {
+        // Fetch all chunks for the Chunk Set
+        for await (const chunk of fs.cat(chunkSetCID)) {
             chunks.push(chunk);
             console.log(`📥 Retrieved Chunk: Size ${chunk.length} bytes`);
         }
 
         // If no chunks are retrieved, throw an error
         if (chunks.length === 0) {
-            throw new Error(`Manifest CID ${manifestCID} not found or empty.`);
+            throw new Error(`Chunk Set CID ${chunkSetCID} not found or empty.`);
         }
 
         // Combine all chunks into a single Uint8Array
@@ -150,41 +239,68 @@ async function retrieveManifest(manifestCID) {
 
         // Decode the combined data into a string
         const decoder = new TextDecoder();
-        const manifestContent = decoder.decode(mergedChunks);
+        const chunkSetContent = decoder.decode(mergedChunks);
 
-        console.log(`📂 Retrieved Manifest Data: ${manifestContent}`); // Log the full content (or a part of it)
+        console.log(`📂 Retrieved Chunk Set Data: ${chunkSetContent}`);
 
         // Try to parse the JSON content
+        let parsedData;
         try {
-            const parsedData = JSON.parse(manifestContent);
-            return parsedData;
+            parsedData = JSON.parse(chunkSetContent);
         } catch (jsonError) {
             console.error("❌ Error parsing JSON data:", jsonError);
             return null;
         }
+
+        // Retrieve cookie chunks from chunkSetCID
+        console.log(`🔄 Retrieving cookie data using ChunkSet CID: ${chunkSetCID}...`);
+
+        // Retrieve the chunks of cookie data
+        let cookieChunks = [];
+        for await (const chunk of fs.cat(chunkSetCID)) {
+            cookieChunks.push(chunk);
+            console.log(`📥 Retrieved Cookie Chunk: Size ${chunk.length} bytes`);
+        }
+
+        if (cookieChunks.length === 0) {
+            throw new Error(`No cookie data found for domain: ${domainName}`);
+        }
+
+        // Merge all cookie chunks
+        const mergedCookieChunks = new Uint8Array(cookieChunks.reduce((acc, chunk) => acc + chunk.length, 0));
+        let cookieOffset = 0;
+        for (const chunk of cookieChunks) {
+            mergedCookieChunks.set(chunk, cookieOffset);
+            cookieOffset += chunk.length;
+        }
+
+        // Decode the combined cookie data into a string
+        const cookieData = decoder.decode(mergedCookieChunks);
+        console.log(`🍪 Retrieved Cookie Data: ${cookieData}`);
+
+        return cookieData; // Return the cookie data
+            
     } catch (error) {
-        console.error("❌ Error retrieving manifest:", error);
+        console.error("❌ Error retrieving manifest or cookie data:", error);
         return null;
     }
 }
 
-
-
 /* ✅ Retrieve Cookies from IPFS using the CIDs */
-async function retrieveCookiesFromIpfs(cids) {
+async function retrieveCookiesFromIpfs(cookieData) {
     try {
         // Ensure Helia and fs are initialized
         if (!helia) await initializeHelia();
 
         // Check if CIDs are provided
-        if (cids.length === 0) {
+        if (cookieData.totalChunks === 0) {
             console.warn("⚠️ No chunks found in manifest.");
             return null;
         }
 
-        console.log(`🔍 Fetching ${cids.length} chunks from IPFS...`);
-
         let combinedBytes = [];
+        let cids = cookieData.chunkCIDs
+        console.log(cids)
 
         // Fetch each chunk for the given CIDs
         for (const cid of cids) {
@@ -234,82 +350,25 @@ async function retrieveCookiesFromIpfs(cids) {
 }
 
 
-
-
-async function listFileChunksFromUnixFS(manifestCID) {
-    if (!fs) await initializeHelia();
-
-    console.log(`📂 Listing chunks for CID: ${manifestCID}...`);
-
-    let chunks = [];
-    let totalSize = 0;
-
-    try {
-        // Ensure manifestCID is valid and has a value
-        if (!manifestCID) {
-            throw new Error("Manifest CID is invalid or empty.");
-        }
-
-        // Fetch the data associated with the CID
-        let data = [];
-        for await (const chunk of fs.cat(manifestCID)) {
-            data.push(chunk);
-        }
-
-        if (data.length === 0) {
-            console.warn(`⚠️ No data found for CID ${manifestCID}.`);
-            return { cid: manifestCID, totalSize: 0, chunks: [] };
-        }
-
-        // Flatten the data array (if it's an array of Uint8Arrays)
-        data = Uint8Array.from(data.flat());
-        console.log(`✅ Data retrieved for CID ${manifestCID}, Size: ${data.length} bytes`);
-
-        // Manually split data into chunks of 64 bytes
-        const chunkSize = 64;
-        for (let i = 0; i < data.length; i += chunkSize) {
-            const chunk = data.slice(i, i + chunkSize);  // Slice the data into 64-byte chunks
-            chunks.push({
-                size: chunk.length,
-                data: new TextDecoder().decode(chunk).slice(0, 50) + "..." // Preview the first 50 characters
-            });
-            totalSize += chunk.length;
-        }
-
-        if (chunks.length === 0) {
-            console.warn(`⚠️ No chunks found for CID ${manifestCID}.`);
-            return { cid: manifestCID, totalSize: 0, chunks: [] };
-        }
-
-        console.log(`✅ Retrieved ${chunks.length} chunks, Total Size: ${totalSize} bytes.`);
-        return { cid: manifestCID, totalSize, chunks };
-    } catch (error) {
-        // Log detailed error information
-        console.error(`❌ Error retrieving chunks for CID ${manifestCID}:`, error);
-        return { cid: manifestCID, totalSize: 0, chunks: [], error: error.message };
-    }
-}
-
-
-
 /* ✅ Handle Messages from Popup */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "storeCookies") {
-        storeCookiesInIpfs()
-            .then((manifestCID) => sendResponse({ manifestCID }))
+        storeCookiesInIpfs("example.com")
+            .then((chunkSetCID) => sendResponse({ chunkSetCID }))
             .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
         return true; // Keep async response open
     }
 
-    if (request.action === "retrieveManifest") {
-        retrieveManifest(request.manifestCid)
-            .then((manifest) => {
-                if (!manifest || !manifest.chunkCIDs || manifest.chunkCIDs.length === 0) {
-                    throw new Error("Invalid or empty manifest.");
+    if (request.action === "retrieveCookies") {
+        retrieveChunkSet(request.domainName)
+            .then((cookieData) => {
+                const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
+                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                    throw new Error("Invalid or empty chunkSetCID.");
                 }
-                return retrieveCookiesFromIpfs(manifest.chunkCIDs).then((cookie) => ({
+                return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
                     cookie,
-                    manifest
+                    cookieData
                 }));
             })
             .then((responseData) => sendResponse(responseData))
@@ -318,12 +377,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keep async response open
     }
 
-    if (request.action === "listFileChunks") {
-        listFileChunksFromUnixFS(request.manifestCid)
-            .then((fileInfo) => sendResponse({ fileInfo }))
-            .catch((error) => sendResponse({ error: `Error listing chunks: ${error.message}` }));
-
-        return true; // Keep async response open
-    }
 });
 
+initializeHelia(); // Call initialization when script loads
