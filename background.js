@@ -191,20 +191,14 @@ async function decryptWithSymmetricKey(encryptedData, key) {
 async function fetchCookie() {
     // Return Dummy Cookie
     return {
-        name: "dummyCookie",
-        value: "randomValue123",
-        domain: "example.com",
-        path: "/",
-        secure: false,
-        httpOnly: false,
-        sameSite: "Lax",
-        expirationDate: Date.now() / 1000 + 3600,
-        metadata: {
-            deviceType: "Desktop",
-            browser: "Chrome",
-            version: "119.0.0.0",
-            os: "Windows 10"
-        }
+        "name": "session_id",
+        "value": "abcd1234",
+        "domain": "localhost",
+        "path": "/",
+        "secure": false,
+        "httpOnly": false,
+        "sameSite": "Lax",
+        "expirationDate": 1700000000
     };
 }
 
@@ -222,13 +216,14 @@ function splitIntoChunks(cipher, chunkSize) {
 // ===============================================
 // 📤 Store Encrypted Cookies in IPFS
 // ===============================================
-async function storeCookiesInIpfs(domainName) {
+async function storeCookiesInIpfs() {
     try {
         await initializeHelia();
 
         console.log("==================🔒📜 Encrypting & Storing Cookies in IPFS 📜🔒 ==================");
 
         const cookie = await fetchCookie();
+        const cookieDomain = cookie.domain;
         const cookieJson = JSON.stringify(cookie);
         const encoder = new TextEncoder();
 
@@ -260,10 +255,10 @@ async function storeCookiesInIpfs(domainName) {
         console.log(`✅ Chunk Set stored with CID: ${chunkSetCID.toString()}`);
 
         // Store the domain-to-chunkSet mapping in IndexedDB
-        await storeMappingInDb(domainName, chunkSetCID.toString());
+        await storeMappingInDb(cookieDomain, chunkSetCID.toString());
 
         // Return the ChunkSet CID directly for use
-        return chunkSetCID.toString();
+        return cookieDomain, chunkSetCID.toString();
 
     } catch (error) {
         console.error('❌ Error storing cookies in IPFS:', error);
@@ -385,9 +380,8 @@ async function retrieveCookiesFromIpfs(cookieData) {
 /* ✅ Handle Messages from Popup */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "storeCookies") {
-        let domainName = "example.com"
-        storeCookiesInIpfs(domainName)
-            .then((chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
+        storeCookiesInIpfs()
+            .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
             .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
         return true; // Keep async response open
     }
