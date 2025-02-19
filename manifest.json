@@ -5,7 +5,12 @@
   "description": "Decentralized Cookie Management for enhanced privacy.",
   "permissions": ["cookies", "storage", "activeTab"],
   "background": {
-    "service_worker": "background.js"
+    "scripts": [
+      "lib/helia-core.js", 
+      "lib/helia-unixfs.js", 
+      "lib/multiformats.js", 
+      "lib/blockstore-idb.js",
+      "background.js"]
   },
   "action": {
     "default_popup": "popup.html",

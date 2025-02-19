@@ -1,15 +1,3 @@
-importScripts('lib/helia-unixfs.js');
-importScripts('lib/helia-core.js');
-importScripts('lib/blockstore-core.js');
-importScripts('lib/blockstore-idb.js');
-importScripts('lib/multiformats.js');
-
-// Access Helia's components globally
-const { createHelia } = Helia; // From helia-core.js
-const { unixfs } = HeliaUnixfs; // From helia-unixfs.js
-const { IDBBlockstore } = BlockstoreIdb; // From blockstore-idb.js
-const { CID } =  Multiformats;
-
 let helia, fs; // Global variables for Helia and UnixFS
 let symmetricKey;
 
@@ -24,7 +12,7 @@ async function initializeHelia() {
 
         console.log("================== 🚀 Initializing Helia, FS 🚀==================");
 
-        const blockstore = new IDBBlockstore("ipfs-cookie-storage");
+        const blockstore = new BlockstoreIdb.IDBBlockstore("ipfs-cookie-storage");
         await blockstore.open();
 
         // Default bootstrap list
@@ -36,7 +24,7 @@ async function initializeHelia() {
             "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
         ];
 
-        helia = await createHelia({
+        helia = await Helia.createHelia({
             blockstore,
             libp2p: {
                 config: {
@@ -55,7 +43,7 @@ async function initializeHelia() {
         });
 
         // ✅ Initialize UnixFS for file storage
-        fs = unixfs(helia);
+        fs = HeliaUnixfs.unixfs(helia);
 
         // Init Symmetric key
         symmetricKey = await generateSymmetricKey()
@@ -130,6 +118,27 @@ async function getMappingFromDb(domainName) {
         };
         request.onerror = (e) => {
             console.error('❌ Error retrieving mapping from DB:', e.target.error);
+            reject(e.target.error);
+        };
+    });
+}
+
+
+async function deleteMappingFromDb(domainName) {
+    const db = await openIndexDb();
+    const transaction = db.transaction('domainMappings', 'readwrite');
+    const store = transaction.objectStore('domainMappings');
+
+    return new Promise((resolve, reject) => {
+        const request = store.delete(domainName);
+
+        request.onsuccess = () => {
+            console.log(`✅ Successfully removed mapping for domain: ${domainName}`);
+            resolve();
+        };
+
+        request.onerror = (e) => {
+            console.error('❌ Error deleting mapping:', e.target.error);
             reject(e.target.error);
         };
     });
@@ -378,37 +387,6 @@ async function retrieveCookiesFromIpfs(cookieData) {
     }
 }
 
-
-/* ✅ Handle Messages from Popup */
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "storeCookies") {
-        storeCookiesInIpfs()
-            .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
-            .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
-        return true; // Keep async response open
-    }
-
-    if (request.action === "retrieveCookies") {
-        retrieveChunkSet(request.domainName)
-            .then((cookieData) => {
-                const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
-                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
-                    throw new Error("Invalid or empty chunkSetCID.");
-                }
-                return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
-                    cookie,
-                    cookieData
-                }));
-            })
-            .then((responseData) => sendResponse(responseData))
-            .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
-
-        return true; // Keep async response open
-    }
-
-});
-
-
 async function deleteCookiesFromIpfs(domainName) {
     console.log("================== 🗑️ Deleting and Verifying Cookies from Simulated IPFS 🗑️ ==================");
 
@@ -509,28 +487,6 @@ async function deleteCookiesFromIpfs(domainName) {
     }
 }
 
-
-
-async function deleteMappingFromDb(domainName) {
-    const db = await openIndexDb();
-    const transaction = db.transaction('domainMappings', 'readwrite');
-    const store = transaction.objectStore('domainMappings');
-
-    return new Promise((resolve, reject) => {
-        const request = store.delete(domainName);
-
-        request.onsuccess = () => {
-            console.log(`✅ Successfully removed mapping for domain: ${domainName}`);
-            resolve();
-        };
-
-        request.onerror = (e) => {
-            console.error('❌ Error deleting mapping:', e.target.error);
-            reject(e.target.error);
-        };
-    });
-}
-
 async function verifyChunkExists(cid) {
     try {
         for await (const chunk of fs.cat(cid)) {
@@ -578,6 +534,35 @@ async function isChunkDeleted(cid, timeout = 5000) {
     return false; // Assume not deleted if no confirmation
 }
 
+
+/* ✅ Handle Messages from Popup */
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "storeCookies") {
+        storeCookiesInIpfs()
+            .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
+            .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
+        return true; // Keep async response open
+    }
+
+    if (request.action === "retrieveCookies") {
+        retrieveChunkSet(request.domainName)
+            .then((cookieData) => {
+                const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
+                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                    throw new Error("Invalid or empty chunkSetCID.");
+                }
+                return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
+                    cookie,
+                    cookieData
+                }));
+            })
+            .then((responseData) => sendResponse(responseData))
+            .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
+
+        return true; // Keep async response open
+    }
+
+});
 
 /* ✅ Function to Remove All Session Cookies from IPFS on Shutdown */
 async function clearSessionCookiesOnShutdown() {
@@ -657,7 +642,5 @@ chrome.runtime.onSuspend.addListener(async () => {
     console.log("🛑 Service worker is suspending, clearing session cookies...");
     await clearSessionCookiesOnShutdown();
 });
-
-
 
 initializeHelia(); // Call initialization when script loads
