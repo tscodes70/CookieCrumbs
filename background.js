@@ -200,10 +200,14 @@ async function decryptWithSymmetricKey(encryptedData, key) {
 // ✅ Fetch cookie (currently dummy cookie)
 // ===============================================
 async function fetchCookie() {
-    // Return Dummy Cookie
+    // Actual domain code for testing purposes
+    let tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    let currentDomain = tabs.length > 0 ? new URL(tabs[0].url).origin : "unknown";
+
     return {
         "name": "session_id",
         "value": "abcd1234",
+        //"domain": currentDomain, // Uncomment this and comment out the line below if you want to test domain
         "domain": "localhost",
         "path": "/",
         "secure": false,
@@ -212,6 +216,7 @@ async function fetchCookie() {
         "expirationDate": 1700000000
     };
 }
+
 
 // ===============================================
 // Split the encrypted data into chunks
@@ -536,14 +541,47 @@ async function isChunkDeleted(cid, timeout = 5000) {
     return false; // Assume not deleted if no confirmation
 }
 
+// Function to check if a domain exists in IndexedDB
+async function verifyDomainExists(domainName) {
+    try {
+        const db = await openIndexDb();
+        const transaction = db.transaction('domainMappings', 'readonly');
+        const store = transaction.objectStore('domainMappings');
+        const request = store.get(domainName);
+        return new Promise((resolve) => {
+            request.onsuccess = (e) => {
+                const mapping = e.target.result;
+                resolve(!!mapping);
+            };
+            request.onerror = () => {
+                resolve(false);
+            };
+        });
+    } catch {
+        return false;
+    }
+}
+
 
 /* ✅ Handle Messages from Popup */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "storeCookies") {
-        storeCookiesInIpfs()
-            .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
-            .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
-        return true; // Keep async response open
+        fetchCookie().then(async (cookieData) => {
+            let domain = cookieData.domain;
+            let exists = await verifyDomainExists(domain);
+
+            // Check if there is an existing cookie for the domain
+            if (!exists) { 
+                storeCookiesInIpfs()
+                    .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
+                    .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
+                return true; // Keep async response open
+            } 
+            else {
+                console.log("Cookie already exisiting for this domain.");
+            }
+        });
+
     }
 
     if (request.action === "retrieveCookies") {
