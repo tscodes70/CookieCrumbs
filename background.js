@@ -452,6 +452,8 @@ async function deleteCookiesFromIpfs(domainName) {
                     console.warn(`⚠️ Chunk CID ${chunkCID} does not exist.`);
                     continue;
                 }
+                const { CID } =  Multiformats;
+
 
                 // ✅ Delete chunk from IPFS
                 await helia.blockstore.delete(CID.parse(chunkCID));
@@ -566,6 +568,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 /* ✅ Function to Remove All Session Cookies from IPFS on Shutdown */
 async function clearSessionCookiesOnShutdown() {
+
+    const { CID } =  Multiformats;
+
     try {
         console.log("🧹 Clearing session cookies on browser shutdown...");
 
