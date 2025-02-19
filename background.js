@@ -644,3 +644,80 @@ chrome.runtime.onSuspend.addListener(async () => {
 });
 
 initializeHelia(); // Call initialization when script loads
+
+// Intercept request headers to capture cookies
+chrome.webRequest.onBeforeSendHeaders.addListener(
+    function(details) {
+        // get domain from header
+        const domain = new URL(details.url).hostname;
+        // retrieve relevant cookies from IPFS
+        // TO BE DONE
+        
+        // get cookie from the request header
+        let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
+
+        // print out whats being sent out
+        // ensure to append the additional cookies with same domain 
+        // TO BE DONE
+        if (cookieHeader > 0) {
+            console.log("Intercepted Cookie in Request:", cookieHeader.value);
+        }
+
+        // Return the headers to continue the request
+        return { requestHeaders: details.requestHeaders };
+    },
+    { urls: ["<all_urls>"] },
+    ["blocking", "requestHeaders"]
+);
+
+// Intercept response headers to capture cookies set by the server
+chrome.webRequest.onHeadersReceived.addListener(
+    function(details) {
+        // retrieve cookies first
+        const domain = new URL(details.url).hostname;
+        let cookieHeader = details.responseHeaders.filter(header => header.name.toLowerCase() === 'set-cookie');
+        // filter out the response to remove the response headers
+        // parse the cookies if available
+        if (cookieHeader.length > 0) {
+            let cookies = cookieHeader.map(header => {
+                let parts = header.value.split('; ');
+                let [name, ...valueParts] = parts[0].split('=');
+                let cookieData = {
+                    name: name.trim(),
+                    value: valueParts.join('=').trim(),
+                    domain: domain,
+                    path: "/",
+                    expires: null,
+                    httpOnly: false,
+                    sescure: false,
+                    sameSite: "None"
+                };
+
+                parts.slice(1).forEach(part => {
+                    let [key, val] = part.split('=');
+                    key = key.toLowerCase().trim();
+                    if (key === 'path') cookieData.path = val || "/";
+                    if (key === 'expires') cookieData.expires = new Date(val).toISOString();
+                    if (key === 'httponly') cookieData.httpOnly = true;
+                    if (key === 'secure') cookieData.secure = true;
+                    if (key === 'samesite') cookieData.sameSite = val || "None";
+                });
+
+                return cookieData;
+            });
+
+            console.log("Blocked cookie response.");
+            console.log("Cookie data: ", JSON.stringify(cookies, null, 2));
+        }
+        // Check for expiry date for expired cookies and other expired  factors i.e. age?
+        // Remove them from the json list
+        // TO BE DONE
+        // Encrypt the cookies and send out to IPFS chain
+        // TO BE DONE
+        // remove the set cookie details first
+        details.responseHeaders = details.responseHeaders.filter(header => header.name.toLowerCase() !== 'set-cookie');
+        return { responseHeaders: details.responseHeaders };
+    },
+    { urls: ["<all_urls>"] },
+    ["blocking", "responseHeaders"]
+);

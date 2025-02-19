@@ -3,7 +3,7 @@
   "name": "CookieCrumbs",
   "version": "1.0",
   "description": "Decentralized Cookie Management for enhanced privacy.",
-  "permissions": ["cookies", "storage", "activeTab"],
+  "permissions": ["cookies", "storage", "activeTab", "webRequest", "webRequestBlocking"],
   "background": {
     "scripts": [
       "lib/helia-core.js", 
