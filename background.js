@@ -627,7 +627,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 return true; // Keep async response open
             } 
             else {
-                console.log("Cookie already exisiting for this domain.");
+                console.log("Cookie already existing for this domain.");
+                retrieveChunkSet(domain)
+                    .then((cookieData) => {
+                        const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
+                        if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                            throw new Error("Invalid or empty chunkSetCID.");
+                        }
+                        return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
+                            cookie,
+                            cookieData
+                        }));
+                    })
+                    .then((responseData) => {
+                        sendResponse(responseData);
+
+                        // Send to web server (IDK if working)
+                        const apiEndpoint = `${domain}/api/storeCookies`; // Construct the API URL
+                        console.log(`✅ dsand ${domain}`);
+                        fetch(apiEndpoint, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Cookie": document.cookie // Send current website's cookies if needed
+                            },
+                            credentials: "include", // Ensures cookies are sent with the request
+                            body: JSON.stringify({
+                                domain: currentWebsite,
+                                cookies: responseData.cookie
+                            })
+                        })
+                        .then(serverResponse => serverResponse.json())
+                        .then(serverData => console.log("Server Response:", serverData))
+                        .catch(error => console.error("Error sending cookie to server:", error));
+                    })
+                    .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
+
+                return true; // Keep async response open
             }
         });
 
