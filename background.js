@@ -778,10 +778,12 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     function(details) {
         // get domain from header
         const domain = new URL(details.url).hostname;
-        // retrieve relevant cookies from IPFS
+        // retrieve relevant cookies from IPFS if have
+        // send domain into the checker
+        // if have, retrieve into array and decrypt into cookie data
         // TO BE DONE
         
-        // get cookie from the request header
+        // get cookie from the request header to view/logging purposes
         let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
 
         // print out whats being sent out
@@ -820,8 +822,10 @@ chrome.webRequest.onHeadersReceived.addListener(
         console.log('Valid cookies:', JSON.stringify(validCookies, null, 2));
         
         // Encrypt the cookies and send out to IPFS chain
-        // TO BE DONE
         validCookies.forEach(cookie=> {
+            console.log("Passing in cookie with domain into IPFS");
+            console.log("Cookie : ", JSON.stringify(cookie,null,2));
+            console.log("Domain : ", cookie.domain);
             storeCookiesInIpfsForReal(cookie, cookie.domain);
         });
         
@@ -832,7 +836,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     },
     { urls: ['<all_urls>'] },
     ['blocking', 'responseHeaders']
-  );
+);
 
 function parseCookie(headerValue, domain) {
     const parts = headerValue.split('; ');
@@ -898,5 +902,7 @@ function isCookieExpired(cookie) {
 }
 
 function filterExpiredCookies(cookies) {
+    // If deleted cookie, remove from IPFS also IF THEY EXIST
+    // TO BE DONE
     return cookies.filter(cookie => !isCookieExpired(cookie));
 }
