@@ -281,6 +281,55 @@ async function storeCookiesInIpfs() {
     }
 }
 
+async function storeCookiesInIpfsForReal(cookie, cookieDomain) {
+    try {
+        await initializeHelia();
+
+        console.log("==================🔒📜 Encrypting & Storing Cookies in IPFS 📜🔒 ==================");
+
+        // const cookie = await fetchCookie();
+        // const cookieDomain = cookie.domain;
+        const cookieJson = JSON.stringify(cookie);
+        const encoder = new TextEncoder();
+
+        // Encrypt the cookie data
+        const cookieIVCipher = await encryptWithSymmetricKey(cookieJson, symmetricKey, encoder);
+        console.log(`✅ Encrypted data: ${cookieIVCipher}`)
+
+        // Split Cookie Data into 64B Chunks
+        let chunkArray = splitIntoChunks(cookieIVCipher, 64)
+        let chunkCIDs = [];
+
+        for (let i = 0; i < chunkArray.length; i ++){
+            let cipherChunk = chunkArray[i];
+            let cid = await fs.addBytes(cipherChunk);
+            chunkCIDs.push(cid.toString());
+        }
+
+        console.log(`✅ Successfully stored cookie in ${chunkCIDs.length} chunks.`);
+
+        // Create Chunk Set
+        const chunkSet = {
+            totalChunks: chunkCIDs.length,
+            chunkCIDs: chunkCIDs
+        };
+
+        const chunkSetBytes = encoder.encode(JSON.stringify(chunkSet));
+        const chunkSetCID = await fs.addBytes(chunkSetBytes);
+
+        console.log(`✅ Chunk Set stored with CID: ${chunkSetCID.toString()}`);
+
+        // Store the domain-to-chunkSet mapping in IndexedDB
+        await storeMappingInDb(cookieDomain, chunkSetCID.toString());
+
+        // Return the ChunkSet CID directly for use
+        return cookieDomain, chunkSetCID.toString();
+
+    } catch (error) {
+        console.error('❌ Error storing cookies in IPFS:', error);
+    }
+}
+
 // ✅ Retrieve ChunkSet File using only the domainName
 async function retrieveChunkSet(domainName) {
     console.log("================== 📥 Retrieving Cookie Chunk Set CID 📥 ==================");
@@ -715,52 +764,103 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
 // Intercept response headers to capture cookies set by the server
 chrome.webRequest.onHeadersReceived.addListener(
-    function(details) {
-        // retrieve cookies first
+    function (details) {
+        // get current domain name
         const domain = new URL(details.url).hostname;
-        let cookieHeader = details.responseHeaders.filter(header => header.name.toLowerCase() === 'set-cookie');
-        // filter out the response to remove the response headers
-        // parse the cookies if available
-        if (cookieHeader.length > 0) {
-            let cookies = cookieHeader.map(header => {
-                let parts = header.value.split('; ');
-                let [name, ...valueParts] = parts[0].split('=');
-                let cookieData = {
-                    name: name.trim(),
-                    value: valueParts.join('=').trim(),
-                    domain: domain,
-                    path: "/",
-                    expires: null,
-                    httpOnly: false,
-                    sescure: false,
-                    sameSite: "None"
-                };
+        // get all cookie from response header
+        const cookieHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() === 'set-cookie' );
 
-                parts.slice(1).forEach(part => {
-                    let [key, val] = part.split('=');
-                    key = key.toLowerCase().trim();
-                    if (key === 'path') cookieData.path = val || "/";
-                    if (key === 'expires') cookieData.expires = new Date(val).toISOString();
-                    if (key === 'httponly') cookieData.httpOnly = true;
-                    if (key === 'secure') cookieData.secure = true;
-                    if (key === 'samesite') cookieData.sameSite = val || "None";
-                });
+        // no set-cookie, dont do anything
+        if (cookieHeaders.length === 0) return;
 
-                return cookieData;
-            });
+        // Parse cookies into json data
+        const cookies = cookieHeaders.map(header => parseCookie(header.value, domain));
 
-            console.log("Blocked cookie response.");
-            console.log("Cookie data: ", JSON.stringify(cookies, null, 2));
-        }
-        // Check for expiry date for expired cookies and other expired  factors i.e. age?
-        // Remove them from the json list
-        // TO BE DONE
+        // Check for expired cookies and filter them out
+        const validCookies = filterExpiredCookies(cookies);
+        
+        // Log the valid cookies
+        console.log("Blocked cookies in response.\n");
+        console.log('Valid cookies:', JSON.stringify(validCookies, null, 2));
+        
         // Encrypt the cookies and send out to IPFS chain
         // TO BE DONE
-        // remove the set cookie details first
-        details.responseHeaders = details.responseHeaders.filter(header => header.name.toLowerCase() !== 'set-cookie');
+        validCookies.forEach(cookie=> {
+            storeCookiesInIpfsForReal(cookie, cookie.domain);
+        });
+        
+        // Remove the `Set-Cookie` headers from the response
+        details.responseHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() !== 'set-cookie' );
+
         return { responseHeaders: details.responseHeaders };
     },
-    { urls: ["<all_urls>"] },
-    ["blocking", "responseHeaders"]
-);
+    { urls: ['<all_urls>'] },
+    ['blocking', 'responseHeaders']
+  );
+
+function parseCookie(headerValue, domain) {
+    const parts = headerValue.split('; ');
+    const [name, ...valueParts] = parts[0].split('=');
+    const cookieData = {
+        name: name.trim(),
+        value: valueParts.join('=').trim(),
+        domain: domain,
+        path: '/',
+        expires: null,
+        maxAge: null,
+        httpOnly: false,
+        secure: false,
+        sameSite: 'None',
+    };
+  
+    parts.slice(1).forEach(part => {
+        const [key, val] = part.split('=');
+        const lowerKey = key.toLowerCase().trim();
+        switch (lowerKey) {
+        case 'path':
+            cookieData.path = val || '/';
+            break;
+        case 'expires':
+            cookieData.expires = new Date(val).toISOString();
+            break;
+        case 'max-age':
+            cookieData.maxAge = parseInt(val, 10);
+            break;
+        case 'httponly':
+            cookieData.httpOnly = true;
+            break;
+        case 'secure':
+            cookieData.secure = true;
+            break;
+        case 'samesite':
+            cookieData.sameSite = val || 'None';
+            break;
+        }
+    });
+  
+    return cookieData;
+}
+
+function isCookieExpired(cookie) {
+    const now = Date.now();
+  
+    // Check `max-age` first
+    if (cookie.maxAge !== null) {
+        const expirationTime = new Date(cookie.expires).getTime();
+        return expirationTime <= now;
+    }
+  
+    // Check `expires`
+    if (cookie.expires !== null) {
+        const expirationTime = new Date(cookie.expires).getTime();
+        return expirationTime <= now;
+    }
+  
+    // If neither `expires` nor `max-age` is set, the cookie is a session cookie
+    // Session cookies expire when the browser is closed, so we consider them valid
+    return false;
+}
+
+function filterExpiredCookies(cookies) {
+    return cookies.filter(cookie => !isCookieExpired(cookie));
+}
