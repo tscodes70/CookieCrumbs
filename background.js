@@ -806,7 +806,8 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
                             // ensure to append the additional cookies with same domain if have
                             if (cookieHeader && cookieHeader.value.trim() !=="") {
                                 console.log("Existing cookie(s) in request:", cookieHeader.value);
-                                cookieHeader.value += '; ${retrievedCookie}';
+                                // cookieHeader.value += '; ${retrievedCookie}';
+                                cookieHeader.value += `; ${retrievedCookie}`;  // Correctly appends the cookie value
                                 console.log("Final Request Headers:", JSON.stringify(details.requestHeaders, null, 2));
                                 return { requestHeaders: details.requestHeaders };
                             } else {
