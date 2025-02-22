@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Vulnerable Page (XSS Simulation)</title>
+  </head>
+  <body>
+    <h1>Welcome to the Vulnerable Page</h1>
+
+    <!-- Simulating a page that would interact with cookies -->
+    <button id="getCookieBtn">Set Cookie</button>
+
+    <script>
+      // When the user clicks the button, it sends a request to the server to set a cookie
+      document.getElementById("getCookieBtn").onclick = function() {
+        fetch('http://localhost:3000/set-cookie')
+          .then(response => response.text())
+          .then(data => {
+            alert('Cookie set: ' + data);
+          })
+          .catch(error => console.error('Error:', error));
+      };
+    </script>
+  </body>
+</html>
