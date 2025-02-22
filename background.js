@@ -825,6 +825,65 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     ["blocking", "requestHeaders"]
 );
 
+// Intercept request headers to capture cookies
+chrome.webRequest.onBeforeSendHeaders.addListener(
+    function(details) {
+        // get domain from header
+        const domain = new URL(details.url).hostname;
+        
+        // get cookie from the request header to view/logging purposes
+        let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
+        let headers = details.requestHeaders;
+        
+        // retrieve relevant cookies from IPFS if have
+        // send domain into the checker
+        // if have, retrieve into array and decrypt into cookie data
+        console.log("Current Domain: ", domain);
+        verifyDomainExists(domain).then(exists =>{
+            console.log(exists);
+            if(exists) {
+                console.log("Cookie already existing for this domain.");
+                retrieveChunkSet(domain).then(cookieData => {
+                    const parsedCookieData = JSON.parse(cookieData);
+                    if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                        throw new Error("Invalid or empty chunkSetCID.");
+                    } else {
+                        retrieveCookiesFromIpfs(parsedCookieData).then(cookie => {
+                            console.log("Retrieved cookie name: ", cookie.name);
+                            console.log("Retrieved cookie value:", cookie.value);
+                            let retrievedCookie = cookie.name + "=" + cookie.value;
+                            console.log("Stored Cookie: ", retrievedCookie);
+                            
+                            // Check if there is an existing cookie header and if it empty
+                            // ensure to append the additional cookies with same domain if have
+                            if (cookieHeader && cookieHeader.value.trim() !=="") {
+                                console.log("Existing cookie(s) in request:", cookieHeader.value);
+                                // cookieHeader.value += '; ${retrievedCookie}';
+                                cookieHeader.value += `; ${retrievedCookie}`;  // Correctly appends the cookie value
+                                console.log("Final Request Headers:", JSON.stringify(details.requestHeaders, null, 2));
+                                return { requestHeaders: details.requestHeaders };
+                            } else {
+                                // push cookie header into request headers and send updated request over 
+                                headers.push({ name: "Cookie", value: retrievedCookie });
+                                console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
+                                return { requestHeaders: headers };
+                            }
+                        });
+                    }
+                    
+                });
+            } else {
+                // dont do anything
+                console.log("No cookie exists in this domain.");
+                return { requestHeaders: details.requestHeaders };
+            }
+        });
+        return { requestHeaders: details.requestHeaders };
+    },
+    { urls: ["<all_urls>"] },
+    ["blocking", "requestHeaders"]
+);
+
 // Intercept response headers to capture cookies set by the server
 chrome.webRequest.onHeadersReceived.addListener(
     function (details) {
@@ -928,6 +987,14 @@ function isCookieExpired(cookie) {
 
 function filterExpiredCookies(cookies) {
     // If deleted cookie, remove from IPFS also IF THEY EXIST
-    // TO BE DONE
+    let expired = cookies.filter(cookie => isCookieExpired(cookie));
+    expired.forEach(cookie => {
+        console.log("Expired cookie: ", cookie);
+        console.log("Expired cookie domain: ", cookie.domain);
+        deleteCookiesFromIpfs(cookie.domain).then(details => {
+            console.log(details);
+            console.log("Cookie deleted inside IPFS.");
+        });
+    });
     return cookies.filter(cookie => !isCookieExpired(cookie));
 }
