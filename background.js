@@ -775,57 +775,50 @@ initializeHelia(); // Call initialization when script loads
 
 // Intercept request headers to capture cookies
 chrome.webRequest.onBeforeSendHeaders.addListener(
-    async function(details) {
+    function(details) {
         // get domain from header
         const domain = new URL(details.url).hostname;
-        
-        // get cookie from the request header to view/logging purposes
-        let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
-        let headers = details.requestHeaders;
         
         // retrieve relevant cookies from IPFS if have
         // send domain into the checker
         // if have, retrieve into array and decrypt into cookie data
         console.log("Current Domain: ", domain);
-        verifyDomainExists(domain).then(exists =>{
+        (async () => {
+            let exists = await verifyDomainExists(domain);
             console.log(exists);
-            if(exists) {
-                console.log("Cookie already existing for this domain.");
-                retrieveChunkSet(domain).then(cookieData => {
-                    const parsedCookieData = JSON.parse(cookieData);
-                    if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
-                        throw new Error("Invalid or empty chunkSetCID.");
-                    } else {
-                        retrieveCookiesFromIpfs(parsedCookieData).then(cookie => {
-                            console.log("Retrieved cookie name: ", cookie.name);
-                            console.log("Retrieved cookie value:", cookie.value);
-                            let retrievedCookie = cookie.name + "=" + cookie.value;
-                            console.log("Stored Cookie: ", retrievedCookie);
-                            
-                            // Check if there is an existing cookie header and if it empty
-                            // ensure to append the additional cookies with same domain if have
-                            if (cookieHeader && cookieHeader.value.trim() !=="") {
-                                console.log("Existing cookie(s) in request:", cookieHeader.value);
-                                // cookieHeader.value += '; ${retrievedCookie}';
-                                cookieHeader.value += `; ${retrievedCookie}`;  // Correctly appends the cookie value
-                                console.log("Final Request Headers:", JSON.stringify(details.requestHeaders, null, 2));
-                                return { requestHeaders: details.requestHeaders };
-                            } else {
-                                // push cookie header into request headers and send updated request over 
-                                headers.push({ name: "Cookie", value: retrievedCookie });
-                                console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
-                                return { requestHeaders: headers };
-                            }
-                        });
-                    }
-                    
-                });
-            } else {
-                // dont do anything
-                console.log("No cookie exists in this domain.");
-                return { requestHeaders: details.requestHeaders };
-            }
-        });
+        })();
+        // Check if there is an existing cookie for the domain
+        if (exists) { 
+            console.log("Cookie already existing for this domain.");
+            const chunkset = retrieveChunkSet(domain);
+            // const cookies = retrieveCookiesFromIpfs(chunkset);
+            // console.log("Cookies retrieved: ", cookies);
+
+        } else {
+            console.log("No cookie exists in this domain.");
+        }
+        
+        // get cookie from the request header to view/logging purposes
+        let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
+            
+        // Check if there is an existing cookie header and if it empty
+        // ensure to append the additional cookies with same domain if have
+        if (cookieHeader && cookieHeader.value.trim() !== "") {
+            console.log("Existing Cookie(s) in Request:", cookieHeader.value);
+            cookieHeader.value += '; ${cookies}';
+        } else {
+            console.log("No cookie header in current Request."); 
+            // if (exists) {
+            //     headers.push({ name: "Cookie", value: cookies});
+            // }
+        }
+
+        // print out whats being sent out
+        if (cookieHeader > 0) {
+            console.log("Final List Intercepted Cookie in Request:", cookieHeader.value);
+        }
+
+        // Return the headers to continue the request
         return { requestHeaders: details.requestHeaders };
     },
     { urls: ["<all_urls>"] },
@@ -834,7 +827,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
 // Intercept response headers to capture cookies set by the server
 chrome.webRequest.onHeadersReceived.addListener(
-    async function (details) {
+    function (details) {
         // get current domain name
         const domain = new URL(details.url).hostname;
         // get all cookie from response header
@@ -935,14 +928,6 @@ function isCookieExpired(cookie) {
 
 function filterExpiredCookies(cookies) {
     // If deleted cookie, remove from IPFS also IF THEY EXIST
-    let expired = cookies.filter(cookie => isCookieExpired(cookie));
-    expired.forEach(cookie => {
-        console.log("Expired cookie: ", cookie);
-        console.log("Expired cookie domain: ", cookie.domain);
-        deleteCookiesFromIpfs(cookie.domain).then(details => {
-            console.log(details);
-            console.log("Cookie deleted inside IPFS.");
-        });
-    });
+    // TO BE DONE
     return cookies.filter(cookie => !isCookieExpired(cookie));
 }
