@@ -934,6 +934,14 @@ function isCookieExpired(cookie) {
 
 function filterExpiredCookies(cookies) {
     // If deleted cookie, remove from IPFS also IF THEY EXIST
-    // TO BE DONE
+    let expired = cookies.filter(cookie => isCookieExpired(cookie));
+    expired.forEach(cookie => {
+        console.log("Expired cookie: ", cookie);
+        console.log("Expired cookie domain: ", cookie.domain);
+        deleteCookiesFromIpfs(cookie.domain).then(details => {
+            console.log(details);
+            console.log("Cookie deleted inside IPFS.");
+        });
+    });
     return cookies.filter(cookie => !isCookieExpired(cookie));
 }
