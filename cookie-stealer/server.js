@@ -4,15 +4,23 @@ const app = express();
 
 // Middleware to check if a cookie exists and redirect only if not on home.html
 app.use((req, res, next) => {
-    const cookies = req.headers.cookie;
-    
-    // Prevent infinite loop: Only redirect if the user is NOT already on /home.html
-    if (cookies && cookies.includes("session_id") && req.path !== '/home.html') {
-        return res.redirect('/home.html');
+    const cookies = req.headers.cookie || ""; // Ensure cookies is a string
+
+    // If session_id exists and user is NOT already on home.html, redirect them
+    if (cookies.includes("session_id")) {
+        if (req.path === "/") {
+            return res.redirect("/home.html"); // Redirect from index to home if authenticated
+        }
+    } else {
+        // If no session_id and user tries to access home.html, redirect to index.html
+        if (req.path === "/home.html") {
+            return res.redirect("/");
+        }
     }
-    
-    next(); // Proceed to the next middleware or route
+
+    next(); // Continue processing other requests
 });
+
 
 // Route to simulate setting cookies via the server's response
 app.get('/set-cookie', (req, res) => {
