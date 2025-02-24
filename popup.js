@@ -1,20 +1,20 @@
 document.addEventListener("DOMContentLoaded", function () {
     // ✅ Store Dummy Cookie in IPFS
-    document.getElementById("storeCookies").addEventListener("click", () => {
-        chrome.runtime.sendMessage({ action: "storeCookies" }, (response) => {
-            if (chrome.runtime.lastError) {
-                alert("❌ Error: " + chrome.runtime.lastError.message);
-                return;
-            }
+    // document.getElementById("storeCookies").addEventListener("click", () => {
+    //     chrome.runtime.sendMessage({ action: "storeCookies" }, (response) => {
+    //         if (chrome.runtime.lastError) {
+    //             alert("❌ Error: " + chrome.runtime.lastError.message);
+    //             return;
+    //         }
 
-            if (response.error) {
-                alert("❌ Error: " + response.error);
-                return;
-            }
+    //         if (response.error) {
+    //             alert("❌ Error: " + response.error);
+    //             return;
+    //         }
 
-            alert(`✅ Cookie stored for ${response.domainName}!`);
-        });
-    });
+    //         alert(`✅ Cookie stored for ${response.domainName}!`);
+    //     });
+    // });
 
     // ✅ Retrieve Cookie Data
     document.getElementById("retrieveCookies").addEventListener("click", () => {
