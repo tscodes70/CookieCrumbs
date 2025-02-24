@@ -5,6 +5,36 @@
   </head>
   <body>
     <h1>Welcome to the Vulnerable Home Page</h1>
+    <button id="retrieveCookieBtn">Test XSS</button>
+    <button id="logout">Logout</button>
+    <script>
+      // Retrieve the cookie and display it
+      document.getElementById("retrieveCookieBtn").onclick = function() {
+          const cookies = document.cookie; // Retrieve cookies
+          alert("Cookies: " + cookies); // Alert the cookies
+          document.getElementById("cookieOutput").innerText = "Cookies: " + cookies; // Display the cookies in the page
+      };
 
+      // logout from place and delete cookie
+      document.getElementById("logout").onclick = function() {
+      // Send request to log out and remove the cookie
+      fetch('/logout', { method: 'GET' })
+          .then(response => {
+              if (!response.ok) {
+                  throw new Error('Logout failed');
+              }
+              return response.text();
+          })
+          .then(data => {
+              alert(data); // Alert the response (success message)
+              window.location.href = '/'; // Redirect to home page
+          })
+          .catch(error => {
+              console.error('Error:', error);
+              alert('An error occurred while logging out.'); // Display error message if any
+          });
+      };
+  </script>
+  <p id="cookieOutput"></p> <!-- For displaying the retrieved cookie -->
   </body>
 </html>

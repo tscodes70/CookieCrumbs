@@ -29,6 +29,13 @@ app.get('/set-cookie', (req, res) => {
     res.send('Cookie Set');
 });
 
+app.get('/logout', (req, res) => {
+    // Remove the session cookie by setting an expired date in the past
+    res.setHeader('Set-Cookie', 'session_id=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; HttpOnly;');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send('Logging out');
+});
+
 // Serve a simple page to simulate the cookie being set
 app.get('/', (req, res) => {
     res.send(`
@@ -38,9 +45,7 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <h1>Simulated Cookie Setting</h1>
-            <button id="getCookieBtn">Set Cookie</button>
-            <button id="retrieveCookieBtn">Test XSS</button>
-            <p id="cookieOutput"></p> <!-- For displaying the retrieved cookie -->
+            <button id="getCookieBtn">Login</button>
 
             <script>
                 // Trigger the GET request to set the cookie
@@ -52,13 +57,6 @@ app.get('/', (req, res) => {
                             location.reload(); // Reload the page to ensure cookies are available in document.cookie
                         })
                         .catch(error => console.error('Error:', error));
-                };
-
-                // Retrieve the cookie and display it
-                document.getElementById("retrieveCookieBtn").onclick = function() {
-                    const cookies = document.cookie; // Retrieve cookies
-                    alert("Cookies: " + cookies); // Alert the cookies
-                    document.getElementById("cookieOutput").innerText = "Cookies: " + cookies; // Display the cookies in the page
                 };
             </script>
         </body>

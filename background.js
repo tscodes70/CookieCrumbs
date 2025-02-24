@@ -830,6 +830,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     function (details) {
         // get current domain name
         const domain = new URL(details.url).hostname;
+        console.log(JSON.stringify("Intercepted response: ", details.responseHeaders));
         // get all cookie from response header
         const cookieHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() === 'set-cookie' );
 
