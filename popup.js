@@ -52,12 +52,12 @@ document.addEventListener("DOMContentLoaded", function () {
                             // If the subValue is an object, display it as a nested table
                             tableHtml += `<tr><td style="width: 20%;"><strong>${subKey}:</strong></td><td><table border="1" cellpadding="5" style="width: 100%; table-layout: fixed;">`;
     
-                            // If it's still an object, iterate again (deep nested)
-                            for (const [deepSubKey, deepSubValue] of Object.entries(subValue)) {
-                                tableHtml += `<tr><td style="width: 20%;"><strong>${deepSubKey}:</strong></td><td>${deepSubValue}</td></tr>`;
-                            }
+                            // // If it's still an object, iterate again (deep nested)
+                            // for (const [deepSubKey, deepSubValue] of Object.entries(subValue)) {
+                            //     tableHtml += `<tr><td style="width: 20%;"><strong>${deepSubKey}:</strong></td><td>${deepSubValue}</td></tr>`;
+                            // }
     
-                            tableHtml += `</table></td></tr>`;
+                            // tableHtml += `</table></td></tr>`;
                         } else {
                             // If it's not an object, display it directly
                             tableHtml += `<tr><td style="width: 40%;"><strong>${subKey}:</strong></td><td>${subValue}</td></tr>`;

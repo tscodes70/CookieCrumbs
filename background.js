@@ -797,24 +797,26 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
                         throw new Error("Invalid or empty chunkSetCID.");
                     } else {
                         retrieveCookiesFromIpfs(parsedCookieData).then(cookie => {
-                            console.log("Retrieved cookie name: ", cookie.name);
-                            console.log("Retrieved cookie value:", cookie.value);
-                            let retrievedCookie = cookie.name + "=" + cookie.value;
-                            console.log("Stored Cookie: ", retrievedCookie);
+                            if(cookie != null){
+                                console.log("Retrieved cookie name: ", cookie.name);
+                                console.log("Retrieved cookie value:", cookie.value);
+                                let retrievedCookie = cookie.name + "=" + cookie.value;
+                                console.log("Stored Cookie: ", retrievedCookie);
                             
-                            // Check if there is an existing cookie header and if it empty
-                            // ensure to append the additional cookies with same domain if have
-                            if (cookieHeader && cookieHeader.value.trim() !=="") {
-                                console.log("Existing cookie(s) in request:", cookieHeader.value);
-                                // cookieHeader.value += '; ${retrievedCookie}';
-                                cookieHeader.value += `; ${retrievedCookie}`;  // Correctly appends the cookie value
-                                console.log("Final Request Headers:", JSON.stringify(details.requestHeaders, null, 2));
-                                return { requestHeaders: details.requestHeaders };
-                            } else {
-                                // push cookie header into request headers and send updated request over 
-                                headers.push({ name: "Cookie", value: retrievedCookie });
-                                console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
-                                return { requestHeaders: headers };
+                                // Check if there is an existing cookie header and if it empty
+                                // ensure to append the additional cookies with same domain if have
+                                if (cookieHeader && cookieHeader.value.trim() !=="") {
+                                    console.log("Existing cookie(s) in request:", cookieHeader.value);
+                                    // cookieHeader.value += '; ${retrievedCookie}';
+                                    cookieHeader.value += `; ${retrievedCookie}`;  // Correctly appends the cookie value
+                                    console.log("Final Request Headers:", JSON.stringify(details.requestHeaders, null, 2));
+                                    return { requestHeaders: details.requestHeaders };
+                                } else {
+                                    // push cookie header into request headers and send updated request over 
+                                    headers.push({ name: "Cookie", value: retrievedCookie });
+                                    console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
+                                    return { requestHeaders: headers };
+                                }
                             }
                         });
                     }
