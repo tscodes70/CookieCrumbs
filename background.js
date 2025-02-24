@@ -779,58 +779,6 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
         // get domain from header
         const domain = new URL(details.url).hostname;
         
-        // retrieve relevant cookies from IPFS if have
-        // send domain into the checker
-        // if have, retrieve into array and decrypt into cookie data
-        console.log("Current Domain: ", domain);
-        (async () => {
-            let exists = await verifyDomainExists(domain);
-            console.log(exists);
-        })();
-        // Check if there is an existing cookie for the domain
-        if (exists) { 
-            console.log("Cookie already existing for this domain.");
-            const chunkset = retrieveChunkSet(domain);
-            // const cookies = retrieveCookiesFromIpfs(chunkset);
-            // console.log("Cookies retrieved: ", cookies);
-
-        } else {
-            console.log("No cookie exists in this domain.");
-        }
-        
-        // get cookie from the request header to view/logging purposes
-        let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
-            
-        // Check if there is an existing cookie header and if it empty
-        // ensure to append the additional cookies with same domain if have
-        if (cookieHeader && cookieHeader.value.trim() !== "") {
-            console.log("Existing Cookie(s) in Request:", cookieHeader.value);
-            cookieHeader.value += '; ${cookies}';
-        } else {
-            console.log("No cookie header in current Request."); 
-            // if (exists) {
-            //     headers.push({ name: "Cookie", value: cookies});
-            // }
-        }
-
-        // print out whats being sent out
-        if (cookieHeader > 0) {
-            console.log("Final List Intercepted Cookie in Request:", cookieHeader.value);
-        }
-
-        // Return the headers to continue the request
-        return { requestHeaders: details.requestHeaders };
-    },
-    { urls: ["<all_urls>"] },
-    ["blocking", "requestHeaders"]
-);
-
-// Intercept request headers to capture cookies
-chrome.webRequest.onBeforeSendHeaders.addListener(
-    function(details) {
-        // get domain from header
-        const domain = new URL(details.url).hostname;
-        
         // get cookie from the request header to view/logging purposes
         let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
         let headers = details.requestHeaders;
