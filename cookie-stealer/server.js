@@ -1,5 +1,18 @@
 const express = require('express');
+const path = require('path');
 const app = express();
+
+// Middleware to check if a cookie exists and redirect only if not on home.html
+app.use((req, res, next) => {
+    const cookies = req.headers.cookie;
+    
+    // Prevent infinite loop: Only redirect if the user is NOT already on /home.html
+    if (cookies && cookies.includes("session_id") && req.path !== '/home.html') {
+        return res.redirect('/home.html');
+    }
+    
+    next(); // Proceed to the next middleware or route
+});
 
 // Route to simulate setting cookies via the server's response
 app.get('/set-cookie', (req, res) => {
@@ -18,7 +31,7 @@ app.get('/', (req, res) => {
         <body>
             <h1>Simulated Cookie Setting</h1>
             <button id="getCookieBtn">Set Cookie</button>
-            <button id="retrieveCookieBtn">Retrieve Cookie</button>
+            <button id="retrieveCookieBtn">Test XSS</button>
             <p id="cookieOutput"></p> <!-- For displaying the retrieved cookie -->
 
             <script>
@@ -43,6 +56,11 @@ app.get('/', (req, res) => {
         </body>
         </html>
     `);
+});
+
+// Serve home.html when redirected
+app.get('/home.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'home.html'));
 });
 
 app.listen(3000, () => {

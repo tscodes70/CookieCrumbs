@@ -773,66 +773,57 @@ chrome.runtime.onSuspend.addListener(async () => {
 
 initializeHelia(); // Call initialization when script loads
 
-// Intercept request headers to capture cookies
 chrome.webRequest.onBeforeSendHeaders.addListener(
-    function(details) {
-        // get domain from header
+    async function(details) { // Make this function async
         const domain = new URL(details.url).hostname;
-        
-        // get cookie from the request header to view/logging purposes
-        let cookieHeader = details.requestHeaders.find(header => header.name.toLowerCase() === 'cookie');
         let headers = details.requestHeaders;
         
-        // retrieve relevant cookies from IPFS if have
-        // send domain into the checker
-        // if have, retrieve into array and decrypt into cookie data
         console.log("Current Domain: ", domain);
-        verifyDomainExists(domain).then(exists =>{
-            console.log(exists);
-            if(exists) {
-                console.log("Cookie already existing for this domain.");
-                retrieveChunkSet(domain).then(cookieData => {
-                    const parsedCookieData = JSON.parse(cookieData);
-                    if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
-                        throw new Error("Invalid or empty chunkSetCID.");
+        
+        try {
+            let exists = await verifyDomainExists(domain);
+            console.log("Domain exists:", exists);
+
+            if (exists) {
+                console.log("Cookie already exists for this domain.");
+                
+                let cookieData = await retrieveChunkSet(domain);
+                const parsedCookieData = JSON.parse(cookieData);
+
+                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                    console.error("Invalid or empty chunkSetCID.");
+                    return { requestHeaders: headers }; // Return early if no valid cookie
+                }
+
+                let cookie = await retrieveCookiesFromIpfs(parsedCookieData);
+
+                if (cookie && cookie.name && cookie.value) {
+                    let retrievedCookie = `${cookie.name}=${cookie.value}`;
+                    console.log("Retrieved Cookie:", retrievedCookie);
+
+                    let cookieHeader = headers.find(header => header.name.toLowerCase() === 'cookie');
+
+                    if (cookieHeader && cookieHeader.value.trim() !== "") {
+                        console.log("Existing cookie(s) in request:", cookieHeader.value);
+                        cookieHeader.value += `; ${retrievedCookie}`;
                     } else {
-                        retrieveCookiesFromIpfs(parsedCookieData).then(cookie => {
-                            if(cookie != null){
-                                console.log("Retrieved cookie name: ", cookie.name);
-                                console.log("Retrieved cookie value:", cookie.value);
-                                let retrievedCookie = cookie.name + "=" + cookie.value;
-                                console.log("Stored Cookie: ", retrievedCookie);
-                            
-                                // Check if there is an existing cookie header and if it empty
-                                // ensure to append the additional cookies with same domain if have
-                                if (cookieHeader && cookieHeader.value.trim() !=="") {
-                                    console.log("Existing cookie(s) in request:", cookieHeader.value);
-                                    // cookieHeader.value += '; ${retrievedCookie}';
-                                    cookieHeader.value += `; ${retrievedCookie}`;  // Correctly appends the cookie value
-                                    console.log("Final Request Headers:", JSON.stringify(details.requestHeaders, null, 2));
-                                    return { requestHeaders: details.requestHeaders };
-                                } else {
-                                    // push cookie header into request headers and send updated request over 
-                                    headers.push({ name: "Cookie", value: retrievedCookie });
-                                    console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
-                                    return { requestHeaders: headers };
-                                }
-                            }
-                        });
+                        headers.push({ name: "Cookie", value: retrievedCookie });
                     }
-                    
-                });
-            } else {
-                // dont do anything
-                console.log("No cookie exists in this domain.");
-                return { requestHeaders: details.requestHeaders };
+
+                    console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
+                    return { requestHeaders: headers };
+                }
             }
-        });
-        return { requestHeaders: details.requestHeaders };
+        } catch (error) {
+            console.error("Error processing request headers:", error);
+        }
+
+        return { requestHeaders: headers }; // Ensure headers are always returned
     },
     { urls: ["<all_urls>"] },
     ["blocking", "requestHeaders"]
 );
+
 
 // Intercept response headers to capture cookies set by the server
 chrome.webRequest.onHeadersReceived.addListener(
