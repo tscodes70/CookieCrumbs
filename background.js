@@ -48,6 +48,7 @@ async function initializeHelia() {
         // Init Symmetric key
         symmetricKey = await generateSymmetricKey()
 
+
         console.log("✅ Successfully initialized Helia, FS and generated Symmetric Key");
         return helia;
     } catch (error) {
@@ -123,6 +124,29 @@ async function getMappingFromDb(domainName) {
     });
 }
 
+// Function to retrieve all mappings from IndexedDB
+async function getAllMappingsFromDb() {
+    const db = await openIndexDb();
+    const transaction = db.transaction('domainMappings', 'readonly');
+    const store = transaction.objectStore('domainMappings');
+
+    return new Promise((resolve, reject) => {
+        const request = store.getAll(); // Fetch all entries
+        request.onsuccess = (e) => {
+            const mappings = e.target.result;
+            if (mappings.length > 0) {
+                resolve(mappings); // Return all mappings
+            } else {
+                console.warn('⚠️ No mappings found in the database.');
+                resolve([]); // Return an empty array if no mappings exist
+            }
+        };
+        request.onerror = (e) => {
+            console.error('❌ Error retrieving all mappings from DB:', e.target.error);
+            reject(e.target.error);
+        };
+    });
+}
 
 async function deleteMappingFromDb(domainName) {
     const db = await openIndexDb();
@@ -611,83 +635,178 @@ async function verifyDomainExists(domainName) {
     }
 }
 
+// Function to export encrypted cookies and sym key
+async function exportCookies() {
+    try {
+        const mappings = await getAllMappingsFromDb(); // Wait for mappings to be fetched
+        console.log('📌 All mappings:', mappings);
 
-/* ✅ Handle Messages from Popup */
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "storeCookies") {
-        fetchCookie().then(async (cookieData) => {
-            let domain = cookieData.domain;
-            let exists = await verifyDomainExists(domain);
+        let exportData = {}; // Object to store data for export
 
-            // Check if there is an existing cookie for the domain
-            if (!exists) { 
-                storeCookiesInIpfs()
-                    .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
-                    .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
-                return true; // Keep async response open
-            } 
-            else {
-                console.log("Cookie already existing for this domain.");
-                retrieveChunkSet(domain)
-                    .then((cookieData) => {
-                        const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
-                        if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
-                            throw new Error("Invalid or empty chunkSetCID.");
-                        }
-                        return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
-                            cookie,
-                            cookieData
-                        }));
-                    })
-                    .then((responseData) => {
-                        sendResponse(responseData);
+        for (const mapping of mappings) {
+            try {
+                const cookieDataString = await retrieveChunkSet(mapping.domainName); // Await result
 
-                        // Send to web server (IDK if working)
-                        const apiEndpoint = `${domain}/api/storeCookies`; // Construct the API URL
-                        console.log(`✅ dsand ${domain}`);
-                        fetch(apiEndpoint, {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "Cookie": document.cookie // Send current website's cookies if needed
-                            },
-                            credentials: "include", // Ensures cookies are sent with the request
-                            body: JSON.stringify({
-                                domain: currentWebsite,
-                                cookies: responseData.cookie
-                            })
-                        })
-                        .then(serverResponse => serverResponse.json())
-                        .then(serverData => console.log("Server Response:", serverData))
-                        .catch(error => console.error("Error sending cookie to server:", error));
-                    })
-                    .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
-
-                return true; // Keep async response open
-            }
-        });
-
-    }
-
-    if (request.action === "retrieveCookies") {
-        retrieveChunkSet(request.domainName)
-            .then((cookieData) => {
-                const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
-                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
-                    throw new Error("Invalid or empty chunkSetCID.");
+                if (!cookieDataString) {
+                    console.warn(`⚠️ No chunk set data found for ${mapping.domainName}`);
+                    continue;
                 }
-                return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
-                    cookie,
-                    cookieData
-                }));
-            })
-            .then((responseData) => sendResponse(responseData))
-            .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
 
-        return true; // Keep async response open
+                const parsedCookieData = JSON.parse(cookieDataString); // Parse JSON string
+
+                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                    console.warn(`⚠️ Invalid or empty chunkSetCID for ${mapping.domainName}.`);
+                    continue;
+                }
+
+                if (parsedCookieData.totalChunks === 0) {
+                    console.warn(`⚠️ No chunks found in chunk set for ${mapping.domainName}.`);
+                    continue;
+                }
+
+                let cids = parsedCookieData.chunkCIDs; // Extract CIDs correctly
+                let chunkSetId = mapping.chunkSetCID; // Get chunkSetCID
+                let chunkData = {}; // Store chunk data for this domain
+
+                for (const cid of cids) {
+                    console.log(`✅ Processing CID: ${cid}`);
+
+                    const chunks = [];
+
+                    try {
+                        for await (const chunk of fs.cat(cid)) {
+                            chunks.push(...chunk); // Merge chunk data
+                        }
+
+                        if (chunks.length > 0) {
+                            chunkData[cid] = Array.from(new Uint8Array(chunks)); // Convert Uint8Array to normal array
+                        } else {
+                            console.warn(`⚠️ No data found for CID: ${cid}`);
+                        }
+                    } catch (fsError) {
+                        console.error(`❌ Error fetching CID ${cid}:`, fsError);
+                    }
+                }
+
+                // Store chunk data inside the domain entry
+                if (!exportData[mapping.domainName]) {
+                    exportData[mapping.domainName] = {};
+                }
+                exportData[mapping.domainName][chunkSetId] = chunkData;
+
+            } catch (error) {
+                console.error(`❌ Error processing domain ${mapping.domainName}:`, error);
+            }
+        }
+
+        // ✅ Export the symmetric key
+        const symmetricKeyRaw = await crypto.subtle.exportKey("raw", symmetricKey);
+        const symmetricKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(symmetricKeyRaw))); // Convert raw key to Base64
+
+        // ✅ Modify the JSON format to place `symmetricKey` at the top
+        const finalExportData = {
+            symmetricKey: symmetricKeyBase64, // Symmetric key at the top
+            ...exportData // Append all domain data
+        };
+
+        // Convert object to JSON string
+        const jsonData = JSON.stringify(finalExportData, null, 4);
+
+        // Save as JSON file (Assuming a browser environment)
+        const blob = new Blob([jsonData], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "exported_cookies.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        console.log("✅ Data exported successfully!");
+
+    } catch (error) {
+        console.error('❌ Failed to fetch mappings:', error);
     }
+}
 
-});
+async function importCookies(jsonData) {
+            try {
+                console.log("📂 Loaded JSON Data:", jsonData);
+
+                // ✅ Extract and restore the symmetric key
+                if (!jsonData.symmetricKey) {
+                    console.error("❌ No symmetric key found in the imported JSON.");
+                    alert("⚠️ Import failed: Missing symmetric key.");
+                    return;
+                }
+
+                // ✅ Convert Base64 string back to Uint8Array
+                const binaryKey = atob(jsonData.symmetricKey)
+                    .split("")
+                    .map(char => char.charCodeAt(0));
+                const keyBuffer = new Uint8Array(binaryKey);
+
+                // ✅ Import the symmetric key
+                symmetricKey = await crypto.subtle.importKey(
+                    "raw",
+                    keyBuffer,
+                    { name: "AES-GCM" },
+                    true,
+                    ["encrypt", "decrypt"]
+                );
+
+                console.log("🔑 Symmetric key successfully restored!");
+
+                // ✅ Remove the symmetric key from JSON to process domain data
+                delete jsonData.symmetricKey;
+
+                // ✅ Initialize IPFS
+                await initializeHelia();
+                console.log("✅ IPFS initialized for re-storage.");
+
+                for (const domainName in jsonData) {
+                    const chunkSets = jsonData[domainName];
+
+                    for (const chunkSetId in chunkSets) {
+                        const chunkData = chunkSets[chunkSetId];
+                        const chunkCIDs = Object.keys(chunkData);
+                        let newChunkCIDs = [];
+
+                        console.log(`🔄 Restoring domain: ${domainName}, Chunk Set: ${chunkSetId}`);
+
+                        for (const cid of chunkCIDs) {
+                            try {
+                                const chunkBytes = new Uint8Array(chunkData[cid]); // Convert stored chunk back to Uint8Array
+                                const newCid = await fs.addBytes(chunkBytes); // Re-store in IPFS
+                                newChunkCIDs.push(newCid.toString());
+                                console.log(`✅ Chunk ${cid} re-stored with new CID: ${newCid.toString()}`);
+                            } catch (error) {
+                                console.error(`❌ Error re-storing chunk ${cid}:`, error);
+                            }
+                        }
+
+                        // ✅ Create new chunk set
+                        const chunkSet = {
+                            totalChunks: newChunkCIDs.length,
+                            chunkCIDs: newChunkCIDs
+                        };
+
+                        const encoder = new TextEncoder();
+                        const chunkSetBytes = encoder.encode(JSON.stringify(chunkSet));
+                        const newChunkSetCID = await fs.addBytes(chunkSetBytes);
+
+                        console.log(`✅ New Chunk Set stored with CID: ${newChunkSetCID.toString()}`);
+
+                        // ✅ Store the new mapping using storeMappingInDb()
+                        await storeMappingInDb(domainName, newChunkSetCID.toString());
+                    }
+                }
+
+                console.log("✅ Import complete!");
+
+            } catch (error) {
+                console.error("❌ Failed to parse JSON file:", error);
+            }
+}
 
 /* ✅ Function to Remove All Session Cookies from IPFS on Shutdown */
 async function clearSessionCookiesOnShutdown() {
@@ -758,111 +877,6 @@ async function clearSessionCookiesOnShutdown() {
         console.error("❌ Error clearing session cookies on shutdown:", error);
     }
 }
-
-/* ✅ Listen for Browser Shutdown */
-chrome.windows.onRemoved.addListener(async (windowId) => {
-    console.log("🛑 Browser window closed, clearing session cookies...");
-    await clearSessionCookiesOnShutdown();
-});
-
-/* ✅ Alternative: Detect when the service worker is being suspended */
-chrome.runtime.onSuspend.addListener(async () => {
-    console.log("🛑 Service worker is suspending, clearing session cookies...");
-    await clearSessionCookiesOnShutdown();
-});
-
-initializeHelia(); // Call initialization when script loads
-
-chrome.webRequest.onBeforeSendHeaders.addListener(
-    async function(details) { // Make this function async
-        const domain = new URL(details.url).hostname;
-        let headers = details.requestHeaders;
-        
-        console.log("Current Domain: ", domain);
-        
-        try {
-            let exists = await verifyDomainExists(domain);
-            console.log("Domain exists:", exists);
-
-            if (exists) {
-                console.log("Cookie already exists for this domain.");
-                
-                let cookieData = await retrieveChunkSet(domain);
-                const parsedCookieData = JSON.parse(cookieData);
-
-                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
-                    console.error("Invalid or empty chunkSetCID.");
-                    return { requestHeaders: headers }; // Return early if no valid cookie
-                }
-
-                let cookie = await retrieveCookiesFromIpfs(parsedCookieData);
-
-                if (cookie && cookie.name && cookie.value) {
-                    let retrievedCookie = `${cookie.name}=${cookie.value}`;
-                    console.log("Retrieved Cookie:", retrievedCookie);
-
-                    let cookieHeader = headers.find(header => header.name.toLowerCase() === 'cookie');
-
-                    if (cookieHeader && cookieHeader.value.trim() !== "") {
-                        console.log("Existing cookie(s) in request:", cookieHeader.value);
-                        cookieHeader.value += `; ${retrievedCookie}`;
-                    } else {
-                        headers.push({ name: "Cookie", value: retrievedCookie });
-                    }
-
-                    console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
-                    return { requestHeaders: headers };
-                }
-            }
-        } catch (error) {
-            console.error("Error processing request headers:", error);
-        }
-
-        return { requestHeaders: headers }; // Ensure headers are always returned
-    },
-    { urls: ["<all_urls>"] },
-    ["blocking", "requestHeaders"]
-);
-
-
-// Intercept response headers to capture cookies set by the server
-chrome.webRequest.onHeadersReceived.addListener(
-    function (details) {
-        // get current domain name
-        const domain = new URL(details.url).hostname;
-        console.log(JSON.stringify("Intercepted response: ", details.responseHeaders));
-        // get all cookie from response header
-        const cookieHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() === 'set-cookie' );
-
-        // no set-cookie, dont do anything
-        if (cookieHeaders.length === 0) return;
-
-        // Parse cookies into json data
-        const cookies = cookieHeaders.map(header => parseCookie(header.value, domain));
-
-        // Check for expired cookies and filter them out
-        const validCookies = filterExpiredCookies(cookies);
-        
-        // Log the valid cookies
-        console.log("Blocked cookies in response.\n");
-        console.log('Valid cookies:', JSON.stringify(validCookies, null, 2));
-        
-        // Encrypt the cookies and send out to IPFS chain
-        validCookies.forEach(cookie=> {
-            console.log("Passing in cookie with domain into IPFS");
-            console.log("Cookie : ", JSON.stringify(cookie,null,2));
-            console.log("Domain : ", cookie.domain);
-            storeCookiesInIpfsForReal(cookie, cookie.domain);
-        });
-        
-        // Remove the `Set-Cookie` headers from the response
-        details.responseHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() !== 'set-cookie' );
-
-        return { responseHeaders: details.responseHeaders };
-    },
-    { urls: ['<all_urls>'] },
-    ['blocking', 'responseHeaders']
-);
 
 function parseCookie(headerValue, domain) {
     const parts = headerValue.split('; ');
@@ -940,3 +954,202 @@ function filterExpiredCookies(cookies) {
     });
     return cookies.filter(cookie => !isCookieExpired(cookie));
 }
+
+/* ✅ Handle Messages from Popup */
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "storeCookies") {
+        fetchCookie().then(async (cookieData) => {
+            let domain = cookieData.domain;
+            let exists = await verifyDomainExists(domain);
+
+            // Check if there is an existing cookie for the domain
+            if (!exists) { 
+                storeCookiesInIpfs()
+                    .then((domainName, chunkSetCID) => sendResponse({ domainName, chunkSetCID }))
+                    .catch((error) => sendResponse({ error: `Error: ${error.message}` }));
+                return true; // Keep async response open
+            } 
+            else {
+                console.log("Cookie already existing for this domain.");
+                retrieveChunkSet(domain)
+                    .then((cookieData) => {
+                        const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
+                        if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                            throw new Error("Invalid or empty chunkSetCID.");
+                        }
+                        return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
+                            cookie,
+                            cookieData
+                        }));
+                    })
+                    .then((responseData) => {
+                        sendResponse(responseData);
+
+                        // Send to web server (IDK if working)
+                        const apiEndpoint = `${domain}/api/storeCookies`; // Construct the API URL
+                        console.log(`✅ dsand ${domain}`);
+                        fetch(apiEndpoint, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Cookie": document.cookie // Send current website's cookies if needed
+                            },
+                            credentials: "include", // Ensures cookies are sent with the request
+                            body: JSON.stringify({
+                                domain: currentWebsite,
+                                cookies: responseData.cookie
+                            })
+                        })
+                        .then(serverResponse => serverResponse.json())
+                        .then(serverData => console.log("Server Response:", serverData))
+                        .catch(error => console.error("Error sending cookie to server:", error));
+                    })
+                    .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
+
+                return true; // Keep async response open
+            }
+        });
+
+    }
+
+    if (request.action === "retrieveCookies") {
+        retrieveChunkSet(request.domainName)
+            .then((cookieData) => {
+                const parsedCookieData = JSON.parse(cookieData);  // Parse if needed
+                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                    throw new Error("Invalid or empty chunkSetCID.");
+                }
+                return retrieveCookiesFromIpfs(parsedCookieData).then((cookie) => ({
+                    cookie,
+                    cookieData
+                }));
+            })
+            .then((responseData) => sendResponse(responseData))
+            .catch((error) => sendResponse({ error: `Error retrieving cookies: ${error.message}` }));
+
+        return true; // Keep async response open
+    }
+
+    if (request.action === "importCookies") {
+        console.log("📥 Received importCookies request in background.js");
+
+        importCookies(request.data)
+            .then(() => sendResponse({ success: true }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
+
+        return true; // Keep response channel open for async operation
+    }
+
+    if (request.action === "exportCookies") {
+        exportCookies()
+            .then((data) => sendResponse({ success: true, data }))
+            .catch((error) => sendResponse({ success: false, error: error.message }));
+        return true; // Keeps the response channel open for async operations
+    }
+
+});
+
+/* ✅ Listen for Browser Shutdown */
+chrome.windows.onRemoved.addListener(async (windowId) => {
+    console.log("🛑 Browser window closed, clearing session cookies...");
+    await clearSessionCookiesOnShutdown();
+});
+
+/* ✅ Alternative: Detect when the service worker is being suspended */
+chrome.runtime.onSuspend.addListener(async () => {
+    console.log("🛑 Service worker is suspending, clearing session cookies...");
+    await clearSessionCookiesOnShutdown();
+});
+
+chrome.webRequest.onBeforeSendHeaders.addListener(
+    async function(details) { // Make this function async
+        const domain = new URL(details.url).hostname;
+        let headers = details.requestHeaders;
+        
+        console.log("Current Domain: ", domain);
+        
+        try {
+            let exists = await verifyDomainExists(domain);
+            console.log("Domain exists:", exists);
+
+            if (exists) {
+                console.log("Cookie already exists for this domain.");
+                
+                let cookieData = await retrieveChunkSet(domain);
+                const parsedCookieData = JSON.parse(cookieData);
+
+                if (!parsedCookieData || !parsedCookieData.chunkCIDs || parsedCookieData.chunkCIDs.length === 0) {
+                    console.error("Invalid or empty chunkSetCID.");
+                    return { requestHeaders: headers }; // Return early if no valid cookie
+                }
+
+                let cookie = await retrieveCookiesFromIpfs(parsedCookieData);
+
+                if (cookie && cookie.name && cookie.value) {
+                    let retrievedCookie = `${cookie.name}=${cookie.value}`;
+                    console.log("Retrieved Cookie:", retrievedCookie);
+
+                    let cookieHeader = headers.find(header => header.name.toLowerCase() === 'cookie');
+
+                    if (cookieHeader && cookieHeader.value.trim() !== "") {
+                        console.log("Existing cookie(s) in request:", cookieHeader.value);
+                        cookieHeader.value += `; ${retrievedCookie}`;
+                    } else {
+                        headers.push({ name: "Cookie", value: retrievedCookie });
+                    }
+
+                    console.log("Final Request Headers:", JSON.stringify(headers, null, 2));
+                    return { requestHeaders: headers };
+                }
+            }
+        } catch (error) {
+            console.error("Error processing request headers:", error);
+        }
+
+        return { requestHeaders: headers }; // Ensure headers are always returned
+    },
+    { urls: ["<all_urls>"] },
+    ["blocking", "requestHeaders"]
+);
+
+// Intercept response headers to capture cookies set by the server
+chrome.webRequest.onHeadersReceived.addListener(
+    function (details) {
+        // get current domain name
+        const domain = new URL(details.url).hostname;
+        console.log(JSON.stringify("Intercepted response: ", details.responseHeaders));
+        // get all cookie from response header
+        const cookieHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() === 'set-cookie' );
+
+        // no set-cookie, dont do anything
+        if (cookieHeaders.length === 0) return;
+
+        // Parse cookies into json data
+        const cookies = cookieHeaders.map(header => parseCookie(header.value, domain));
+
+        // Check for expired cookies and filter them out
+        const validCookies = filterExpiredCookies(cookies);
+        
+        // Log the valid cookies
+        console.log("Blocked cookies in response.\n");
+        console.log('Valid cookies:', JSON.stringify(validCookies, null, 2));
+        
+        // Encrypt the cookies and send out to IPFS chain
+        validCookies.forEach(cookie=> {
+            console.log("Passing in cookie with domain into IPFS");
+            console.log("Cookie : ", JSON.stringify(cookie,null,2));
+            console.log("Domain : ", cookie.domain);
+            storeCookiesInIpfsForReal(cookie, cookie.domain);
+        });
+        
+        // Remove the `Set-Cookie` headers from the response
+        details.responseHeaders = details.responseHeaders.filter( header => header.name.toLowerCase() !== 'set-cookie' );
+
+        return { responseHeaders: details.responseHeaders };
+    },
+    { urls: ['<all_urls>'] },
+    ['blocking', 'responseHeaders']
+);
+
+initializeHelia(); // Call initialization when script loads
+

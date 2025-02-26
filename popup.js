@@ -16,6 +16,74 @@ document.addEventListener("DOMContentLoaded", function () {
     //     });
     // });
 
+    // ✅ Import Cookie Data (Sends File Data to Background Script)
+    document.getElementById("importButton").addEventListener("click", function() {
+        const jsonText = document.getElementById("jsonInput").value.trim();
+        if (!jsonText) {
+            alert("⚠️ Please paste JSON data before importing.");
+            return;
+        }
+
+        try {
+            const jsonData = JSON.parse(jsonText); // Validate JSON format
+            console.log("📂 Loaded JSON Data:", jsonData);
+
+            // ✅ Send JSON data to background.js
+            chrome.runtime.sendMessage({ action: "importCookies", data: jsonData }, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.error("❌ Import Error:", chrome.runtime.lastError.message);
+                    return;
+                }
+                if (response?.success) {
+                    alert("✅ Import completed successfully!");
+                } else {
+                    alert(`❌ Import failed: ${response?.error}`);
+                }
+            });
+
+        } catch (error) {
+            console.error("❌ Failed to parse JSON:", error);
+            alert("❌ Invalid JSON format. Please check your data.");
+        }
+    });
+    
+
+    // ✅ Export Cookie Data (Triggers Background.js Export)
+    document.getElementById("exportButton").addEventListener("click", function() {
+        chrome.runtime.sendMessage({ action: "exportCookies" }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error("❌ Export Error:", chrome.runtime.lastError.message);
+                return;
+            }
+    
+            console.log("📥 Received Export Response:", response); // Debugging log
+    
+            // ✅ Ensure response contains valid data
+            if (response.success === false) {
+                console.warn("⚠️ No valid data received for export.");
+                alert("⚠️ No data found for export.");
+                return;
+            }
+            
+            if (response.success === true){
+                // ✅ Download JSON if valid data exists
+                // const jsonData = JSON.stringify(response.data, null, 4);
+                // const blob = new Blob([jsonData], { type: "application/json" });
+                // const a = document.createElement("a");
+                // a.href = URL.createObjectURL(blob);
+                // a.download = "exported_cookies.json";
+                // document.body.appendChild(a);
+                // a.click();
+                // document.body.removeChild(a);
+        
+                alert("✅ Data exported successfully!");
+            }
+        });
+    });
+    
+    
+    
+
     // ✅ Retrieve Cookie Data
     document.getElementById("retrieveCookies").addEventListener("click", () => {
         const domainName = document.getElementById("domainNameDataInput").value.trim();
