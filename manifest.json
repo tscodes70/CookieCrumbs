@@ -1,16 +1,25 @@
+
+
 {
   "manifest_version": 3,
   "name": "CookieCrumbs",
   "version": "1.0",
   "description": "Decentralized Cookie Management for enhanced privacy.",
-  "permissions": ["cookies", "storage", "activeTab", "webRequest", "webRequestBlocking"],
+  "permissions": [
+    "cookies",
+    "storage",
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking"
+  ],
   "background": {
     "scripts": [
-      "lib/helia-core.js", 
-      "lib/helia-unixfs.js", 
-      "lib/multiformats.js", 
+      "lib/helia-core.js",
+      "lib/helia-unixfs.js",
+      "lib/multiformats.js",
       "lib/blockstore-idb.js",
-      "background.js"]
+      "background.js"
+    ]
   },
   "action": {
     "default_popup": "popup.html",
@@ -20,5 +29,11 @@
       "128": "icons/cookies.png"
     }
   },
-  "host_permissions": ["<all_urls>"]
+  "host_permissions": ["<all_urls>"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "cookiecrumbsyumyum@example.com",
+      "strict_min_version": "42.0"
+    }
+  }
 }

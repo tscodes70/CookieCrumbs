@@ -10,7 +10,7 @@
             text-align: center;
             margin: 20px;
         }
-        input {
+        input, textarea {
             padding: 5px;
             width: 250px;
             margin: 5px;
@@ -20,43 +20,69 @@
             margin: 5px;
             cursor: pointer;
         }
-        #cookieDataOutput {
+        pre {
             margin-top: 10px;
             font-weight: bold;
             white-space: pre-wrap;
             text-align: left;
             max-width: 100%;
-            width: 800vw;
-            margin-left: auto;
-            margin-right: auto;
             border: 1px solid #ddd;
             padding: 10px;
             background: #f9f9f9;
             overflow-x: auto;
-            white-space: nowrap;
         }
-
+        /* New style for button container to display buttons side by side */
+        .button-container {
+            display: inline-flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
     <h1>🍪 CookieCrumbs</h1>
 
-    <!-- <button id="storeCookies">Generate & Store Dummy Cookie</button> -->
-
     <h3>Retrieve Cookie Data</h3>
     <input type="text" id="domainNameDataInput" placeholder="Enter Domain Name">
     <button id="retrieveCookies">Retrieve Cookies</button>
-    <pre id="cookieDataOutput"></pre> <!-- Display manifest data -->
-
-    <!-- 
-    <h3>List Chunks</h3>
-    <input type="text" id="manifestCidInput" placeholder="Enter Manifest CID">
-    <button id="listChunks">List Chunks</button>
-    <pre id="chunkOutput"></pre> 
-    -->
-    <script src="popup.js"></script>
+    <pre id="cookieDataOutput"></pre>
 
 
+<!-- Cookie Rules -->
+<h3>Cookie Rules</h3>
+<textarea id="rulesInput" placeholder=
+'{
+    "www.facebook.com": {
+      "store": true,
+      "storageDuration": 1
+    },
+    "www.instagram.com": {
+      "store": false
+    },
+    "reddit.com": {
+      "store": true,
+      "storageDuration": 5
+    }
+}'
+   rows="15" style="width: 100%;"></textarea><div class="button-container">
+    <button id="saveRules">Save Rules</button>
+    <button id="viewRules">View Rules</button>
+    <button id="clearRules">Clear Rules</button>
+</div>
+<pre id="rulesOutput"></pre>
+
+
+    <!-- Auditing -->
+
+    <h3>Audit Cookie Data</h3>
+    <div class="button-container">
+        <button id="viewAuditLogs">View Audit Logs</button>
+        <button id="clearAuditLogs">Clear Audit Logs</button>
+    </div>
+    <pre id="auditLogOutput"></pre>
+
+    <!--Import/Export Cookies-->
     <h3>Import Cookie Data</h3>
     <textarea id="jsonInput" placeholder="Paste JSON data here..." rows="6" style="width: 100%;"></textarea>
     <button id="importButton">Import Data</button>
@@ -64,5 +90,7 @@
     <h3>Export Cookie Data</h3>
     <button id="exportButton">Export Cookies</button>
 
+
+    <script src="popup.js"></script>
 </body>
 </html>
