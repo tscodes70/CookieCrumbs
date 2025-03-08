@@ -1207,9 +1207,10 @@ chrome.webRequest.onHeadersReceived.addListener(
         // If the rule says not to store cookies, skip storage
         if (rule.store === false) {
           console.log("User rule says do not store cookies for this domain. Skipping storage...");
-          details.responseHeaders = details.responseHeaders.filter(
-            header => header.name.toLowerCase() !== "set-cookie"
-          );
+        //   details.responseHeaders = details.responseHeaders.filter(
+        //     header => header.name.toLowerCase() !== "set-cookie"
+        //   );
+        // DONT FILTER IF NOT STORING, LET THE COOKIE GO THROUGH
           return { responseHeaders: details.responseHeaders };
         }
         // If storageDuration is specified, modify expires and maxAge
