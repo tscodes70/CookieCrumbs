@@ -26,11 +26,15 @@ CookieCrumbs is a decentralized cookie manager designed to help you manage, audi
 
 ---
 
-## installation-and-setup
+## Installation and Setup
 
 Navigate to the cookie-stealer directory and install the required packages:
-- cd cookie-stealer
-- npm install
+   ```bash
+   cd cookie-stealer
+   ```
+   ```bash
+   npm install
+   ```
 
 ### Prerequisites
 
@@ -39,10 +43,27 @@ Navigate to the cookie-stealer directory and install the required packages:
 
 
 ## Running the Server
-- node server.js
+1. Open your terminal and navigate to the `cookie-stealer` folder:
+   ```bash
+   cd cookie-stealer
+   ```
+   
+2. Start the server using one of the following commands:
 
+    **Directly via Node.js:**
+    ```bash
+    node server.js
+    ```
 
-## Library Dependencies
-- blockstore-idb.js: IndexedDB-based block storage.
-- helia-core.js & helia-unixfs.js: Core integration for Helia/IPFS-based storage.
-- multiformats.js: Utilities for handling multiformat data encodings.
+    **Using npm (recommended):**
+    ```bash
+    npm start
+    ```
+
+## Library Dependencies 
+The following libraries are included in the project and are automatically installed locally. No separate installation is needed:
+
+- **blockstore-idb.js**: Provides IndexedDB-based block storage functionality.
+- **helia-core.js & helia-unixfs.js**: Offer core integration for Helia/IPFS-based storage.
+- **multiformats.js**: Supplies utilities for handling multiformat data encodings.
+
