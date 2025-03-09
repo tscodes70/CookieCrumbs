@@ -80,6 +80,7 @@ For detailed instructions on how to use CookieCrumbs, please refer to our compre
 > **Important:** As of now, CookieCrumbs works exclusively on Firefox. Future versions will introduce compatibility with other browsers.
 
 You can download a copy of the user manual by clicking the link below:
-[Download User Manual](./User_Manual.doc)
+
+[Download User Manual](./User_Manual.docx)
 
 
