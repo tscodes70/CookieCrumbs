@@ -10,7 +10,7 @@ Decentralised Cookie Manager
 - [Installation and Setup](#installation-and-setup)
 - [Running the Server](#running-the-server)
 - [Library Dependencies](#library-dependencies)
-
+- [User Manual](#user-manual)
 ---
 
 ## Overview
@@ -66,4 +66,15 @@ The following libraries are included in the project and are automatically instal
 - **blockstore-idb.js**: Provides IndexedDB-based block storage functionality.
 - **helia-core.js & helia-unixfs.js**: Offer core integration for Helia/IPFS-based storage.
 - **multiformats.js**: Supplies utilities for handling multiformat data encodings.
+
+
+## User Manual
+
+For detailed instructions on how to use CookieCrumbs, please refer to our comprehensive user manual. The manual provides an in-depth guide covering:
+
+Step-by-step instructions on setting up and configuring the application.
+Detailed descriptions of all features, including cookie retrieval, rule setup, and audit logging as well as simulation of the cookie stealer.
+You can download a copy of the user manual by clicking the link below:
+[Download User Manual](./User_Manual.doc)
+
 
