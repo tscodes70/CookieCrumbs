@@ -81,6 +81,7 @@ For detailed instructions on how to use CookieCrumbs, please refer to our compre
 
 You can download a copy of the user manual by clicking the link below:
 
-[Download User Manual](./User_Manual.docx)
+[Download User Manual](https://github.com/tscodes70/CookieCrumbs/blob/main/User_Manual.docx?raw=true)
+
 
 
