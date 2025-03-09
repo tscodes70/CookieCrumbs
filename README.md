@@ -72,8 +72,13 @@ The following libraries are included in the project and are automatically instal
 
 For detailed instructions on how to use CookieCrumbs, please refer to our comprehensive user manual. The manual provides an in-depth guide covering:
 
-Step-by-step instructions on setting up and configuring the application.
-Detailed descriptions of all features, including cookie retrieval, rule setup, and audit logging as well as simulation of the cookie stealer.
+- Step-by-step instructions on setting up and configuring the application.
+- Detailed descriptions of all features, including cookie retrieval, rule setup, and audit logging.
+- Simulation of the cookie-stealer functionality, showing how cookies can be captured and managed on the server side.
+- Specific notes and considerations for Firefox compatibility.
+
+> **Important:** As of now, CookieCrumbs works exclusively on Firefox. Future versions will introduce compatibility with other browsers.
+
 You can download a copy of the user manual by clicking the link below:
 [Download User Manual](./User_Manual.doc)
 
